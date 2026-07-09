@@ -1,0 +1,274 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Restaurant Profile ─────────────────────────────────────────────
+
+model RestaurantProfile {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  address     String?
+  phone       String?
+  email       String?
+  logoUrl     String?  @map("logo_url")
+  bannerUrl   String?  @map("banner_url")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("restaurant_profiles")
+}
+
+// ─── Operating Hours ────────────────────────────────────────────────
+
+model OperatingHours {
+  id        String   @id @default(uuid())
+  dayOfWeek Int      @map("day_of_week") // 0=Sunday, 6=Saturday
+  openTime  String   @map("open_time")   // "09:00"
+  closeTime String   @map("close_time")  // "22:00"
+  isClosed  Boolean  @default(false) @map("is_closed")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([dayOfWeek])
+  @@map("operating_hours")
+}
+
+// ─── Tax & Service Config ───────────────────────────────────────────
+
+model TaxServiceConfig {
+  id                String   @id @default(uuid())
+  taxEnabled        Boolean  @default(false) @map("tax_enabled")
+  taxPercentage     Decimal  @default(0) @map("tax_percentage")
+  taxLabel          String   @default("PB1") @map("tax_label")
+  serviceEnabled    Boolean  @default(false) @map("service_enabled")
+  servicePercentage Decimal  @default(0) @map("service_percentage")
+  serviceLabel      String   @default("Service Charge") @map("service_label")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@map("tax_service_configs")
+}
+
+// ─── Tripay Configuration ───────────────────────────────────────────
+
+model TripayConfig {
+  id                     String     @id @default(uuid())
+  mode                   TripayMode @default(SANDBOX)
+  sandboxApiKey          String?    @map("sandbox_api_key")
+  sandboxPrivateKey      String?    @map("sandbox_private_key")
+  sandboxMerchantCode    String?    @map("sandbox_merchant_code")
+  productionApiKey       String?    @map("production_api_key")
+  productionPrivateKey   String?    @map("production_private_key")
+  productionMerchantCode String?    @map("production_merchant_code")
+  createdAt              DateTime   @default(now()) @map("created_at")
+  updatedAt              DateTime   @updatedAt @map("updated_at")
+
+  @@map("tripay_configs")
+}
+
+enum TripayMode {
+  SANDBOX
+  PRODUCTION
+}
+
+// ─── Category ───────────────────────────────────────────────────────
+
+model Category {
+  id        String     @id @default(uuid())
+  name      String
+  sortOrder Int        @default(0) @map("sort_order")
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+  menuItems MenuItem[]
+
+  @@map("categories")
+}
+
+// ─── Menu Item ──────────────────────────────────────────────────────
+
+model MenuItem {
+  id          String      @id @default(uuid())
+  name        String
+  description String?
+  price       Int // Stored in Rupiah (integer, no fractions for IDR)
+  imageUrl    String?     @map("image_url")
+  isAvailable Boolean     @default(true) @map("is_available")
+  categoryId  String      @map("category_id")
+  category    Category    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+  orderItems  OrderItem[]
+
+  @@index([categoryId])
+  @@index([isAvailable])
+  @@map("menu_items")
+}
+
+// ─── Table (Meja) ───────────────────────────────────────────────────
+
+model Table {
+  id                 String    @id @default(uuid())
+  number             Int       @unique
+  name               String?
+  token              String    @unique @default(uuid())
+  isActive           Boolean   @default(true) @map("is_active")
+  tokenRegeneratedAt DateTime? @map("token_regenerated_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  orders             Order[]
+
+  @@map("tables")
+}
+
+// ─── Order ──────────────────────────────────────────────────────────
+
+model Order {
+  id             String        @id @default(uuid())
+  orderNumber    String        @unique @map("order_number")
+  sessionId      String        @map("session_id")
+  orderType      OrderType     @map("order_type")
+  tableId        String?       @map("table_id")
+  table          Table?        @relation(fields: [tableId], references: [id], onDelete: SetNull)
+  customerName   String?       @map("customer_name")
+  customerEmail  String?       @map("customer_email")
+  subtotal       Int
+  serviceAmount  Int           @default(0) @map("service_amount")
+  taxAmount      Int           @default(0) @map("tax_amount")
+  grandTotal     Int           @map("grand_total")
+  servicePercent Decimal?      @map("service_percent")
+  taxPercent     Decimal?      @map("tax_percent")
+  paymentStatus  PaymentStatus @default(UNPAID) @map("payment_status")
+  orderStatus    OrderStatus   @default(PENDING) @map("order_status")
+  parentOrderId  String?       @map("parent_order_id")
+  parentOrder    Order?        @relation("OrderToOrder", fields: [parentOrderId], references: [id], onDelete: SetNull)
+  childOrders    Order[]       @relation("OrderToOrder")
+  items          OrderItem[]
+  transaction    Transaction?
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  @@index([sessionId])
+  @@index([tableId])
+  @@index([orderNumber])
+  @@index([paymentStatus])
+  @@index([orderStatus])
+  @@index([createdAt])
+  @@map("orders")
+}
+
+enum OrderType {
+  DINE_IN
+  TAKE_AWAY
+}
+
+enum PaymentStatus {
+  UNPAID
+  PAID
+  FAILED
+  EXPIRED
+  REFUND
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PREPARING
+  READY
+  COMPLETED
+  CANCELLED
+}
+
+// ─── Order Item ─────────────────────────────────────────────────────
+
+model OrderItem {
+  id            String   @id @default(uuid())
+  orderId       String   @map("order_id")
+  order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItemId    String   @map("menu_item_id")
+  menuItem      MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Restrict)
+  quantity      Int
+  priceSnapshot Int      @map("price_snapshot")
+  notes         String?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([orderId])
+  @@map("order_items")
+}
+
+// ─── Payment Method (synced from Tripay) ────────────────────────────
+
+model PaymentMethod {
+  id           String    @id @default(uuid())
+  code         String    @unique
+  name         String
+  groupName    String    @map("group_name")
+  type         String // "direct" or "redirect"
+  feeMerchant  Int       @default(0) @map("fee_merchant")
+  feeCustomer  Int       @default(0) @map("fee_customer")
+  minAmount    Int?      @map("min_amount")
+  maxAmount    Int?      @map("max_amount")
+  iconUrl      String?   @map("icon_url")
+  isActive     Boolean   @default(true) @map("is_active")
+  isShown      Boolean   @default(true) @map("is_shown")
+  lastSyncedAt DateTime? @map("last_synced_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@map("payment_methods")
+}
+
+// ─── Transaction (Tripay) ───────────────────────────────────────────
+
+model Transaction {
+  id               String        @id @default(uuid())
+  orderId          String        @unique @map("order_id")
+  order            Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  reference        String?       @unique
+  merchantRef      String        @unique @map("merchant_ref")
+  paymentMethod    String        @map("payment_method")
+  amount           Int
+  actualPaidAmount Int?          @map("actual_paid_amount")
+  payCode          String?       @map("pay_code")
+  checkoutUrl      String?       @map("checkout_url")
+  qrUrl            String?       @map("qr_url")
+  qrString         String?       @map("qr_string")
+  status           PaymentStatus @default(UNPAID)
+  paidAt           DateTime?     @map("paid_at")
+  expiredTime      DateTime      @map("expired_time")
+  callbackPayload  Json?         @map("callback_payload")
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @updatedAt @map("updated_at")
+
+  @@index([reference])
+  @@index([merchantRef])
+  @@index([status])
+  @@map("transactions")
+}
+
+// ─── Admin User ─────────────────────────────────────────────────────
+
+model AdminUser {
+  id           String    @id @default(uuid())
+  username     String    @unique
+  passwordHash String    @map("password_hash")
+  name         String
+  role         AdminRole @default(ADMIN)
+  isActive     Boolean   @default(true) @map("is_active")
+  lastLoginAt  DateTime? @map("last_login_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@map("admin_users")
+}
+
+enum AdminRole {
+  OWNER
+  ADMIN
+  CASHIER
+}
