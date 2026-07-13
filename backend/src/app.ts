@@ -26,11 +26,10 @@ app.use(
     origin: (origin) => {
       const allowed = process.env.FRONTEND_URL || "http://localhost:3000";
       if (!origin) return allowed;
-      for (const u of allowed.split(",")) {
-        if (origin === u.trim()) return origin;
-      }
+      const origins = allowed.split(",").map((u) => u.trim());
+      if (origins.includes(origin)) return origin;
       if (origin.endsWith(".vercel.app")) return origin;
-      return allowed.split(",")[0].trim();
+      return origins[0] ?? allowed;
     },
     credentials: true,
   })
