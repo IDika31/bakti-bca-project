@@ -36,7 +36,7 @@ app.use(
 );
 
 // Health check
-app.get("/health", (c) => c.json({ status: "ok", timestamp: new Date().toISOString() }));
+app.get("/api/health", (c) => c.json({ status: "ok", timestamp: new Date().toISOString() }));
 
 // Public routes (no auth)
 app.route("/api", publicRoutes);
