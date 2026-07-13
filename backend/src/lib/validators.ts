@@ -62,10 +62,10 @@ export const settingsSchema = z.object({
 
 export const taxConfigSchema = z.object({
   taxEnabled: z.boolean(),
-  taxPercentage: z.number().min(0).max(100),
+  taxPercentage: z.coerce.number().min(0).max(100),
   taxLabel: z.string().max(50).optional(),
   serviceEnabled: z.boolean(),
-  servicePercentage: z.number().min(0).max(100),
+  servicePercentage: z.coerce.number().min(0).max(100),
   serviceLabel: z.string().max(50).optional(),
 });
 

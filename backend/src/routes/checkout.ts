@@ -59,8 +59,12 @@ checkoutRoute.post("/checkout", async (c) => {
 
   const orderNumber = await generateOrderNumber();
 
+  const baseUrl = process.env.APP_URL
+    || (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : null)
+    || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3001");
+
   // Generate placeholder email if empty
-  const appDomain = (process.env.APP_URL || "localhost").replace(/https?:\/\//, "");
+  const appDomain = baseUrl.replace(/https?:\/\//, "");
   const customerEmail =
     data.customerEmail || `order-${orderNumber}@${appDomain}`;
 
@@ -127,8 +131,8 @@ checkoutRoute.post("/checkout", async (c) => {
         price: item.priceSnapshot,
         quantity: item.quantity,
       })),
-      callbackUrl: `${process.env.APP_URL}/api/tripay/callback`,
-      returnUrl: `${process.env.FRONTEND_URL}/order/${order.id}`,
+      callbackUrl: `${baseUrl}/api/tripay/callback`,
+      returnUrl: `${baseUrl}/order/${order.id}`,
     });
 
     // Save transaction record
