@@ -80,12 +80,19 @@ export interface OrderItem {
 
 export interface TransactionInfo {
   reference: string;
+  paymentMethod: string;
   payCode: string | null;
   checkoutUrl: string | null;
   qrUrl: string | null;
   qrString: string | null;
   status: string;
   expiredTime: string;
+  amount: number;
+}
+
+export interface PaymentInstruction {
+  title: string;
+  steps: string[];
 }
 
 export interface RestaurantProfile {

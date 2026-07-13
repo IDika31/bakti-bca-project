@@ -1,15 +1,15 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useCallback } from "react";
-import { ArrowLeft, CheckCircle2, Clock, ChefHat, Package, XCircle, Printer, RotateCcw } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { ArrowLeft, CheckCircle2, Clock, ChefHat, Package, XCircle, Printer, RotateCcw, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePolling } from "@/hooks/use-polling";
 import { api } from "@/lib/api";
 import { formatCurrency, formatDate, ORDER_STATUS_LABELS, PAYMENT_STATUS_LABELS } from "@/lib/format";
-import type { Order, ApiResponse } from "@/types";
+import type { Order, ApiResponse, PaymentInstruction } from "@/types";
 
 const STEP_CONFIG: Record<string, { icon: React.ReactNode; color: string; bg: string; ring: string }> = {
   PENDING: { icon: <Clock className="h-6 w-6" />, color: "text-slate-700", bg: "bg-gradient-to-br from-slate-50 to-slate-100/50 border-slate-200", ring: "ring-slate-200" },
@@ -23,6 +23,8 @@ const STEP_CONFIG: Record<string, { icon: React.ReactNode; color: string; bg: st
 export default function OrderStatusPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const [instructions, setInstructions] = useState<PaymentInstruction[]>([]);
+  const [openInstruction, setOpenInstruction] = useState<number>(0);
 
   const fetcher = useCallback(
     () => api.get<ApiResponse<Order>>(`/api/orders/${id}`).then((r) => r.data),
@@ -32,6 +34,18 @@ export default function OrderStatusPage() {
   const { data: order, loading } = usePolling(fetcher, 5000, {
     stopWhen: (o) => ["COMPLETED", "CANCELLED"].includes(o.orderStatus),
   });
+
+  useEffect(() => {
+    if (!order?.transaction || order.paymentStatus !== "UNPAID") return;
+    const tx = order.transaction;
+    const params = new URLSearchParams({ code: tx.paymentMethod });
+    if (tx.payCode) params.set("pay_code", tx.payCode);
+    if (tx.amount) params.set("amount", String(tx.amount));
+
+    api.get<ApiResponse<PaymentInstruction[]>>(`/api/payment-instructions?${params.toString()}`)
+      .then((r) => setInstructions(r.data || []))
+      .catch(() => {});
+  }, [order?.transaction?.paymentMethod, order?.paymentStatus]);
 
   if (loading && !order) {
     return (
@@ -116,52 +130,101 @@ export default function OrderStatusPage() {
 
             {/* Cashier payment info */}
             {!order.transaction && order.paymentStatus === "UNPAID" && (
-              <div className="rounded-2xl border-2 border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50 p-5 text-center shadow-sm print:hidden sm:p-6">
-                <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-100 text-3xl">
-                  💰
+              <div className="rounded-2xl border-2 border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50 p-5 shadow-sm print:hidden sm:p-6">
+                <div className="text-center">
+                  <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-100 text-3xl">
+                    💰
+                  </div>
+                  <p className="text-base font-bold text-amber-900">
+                    Silakan bayar di kasir
+                  </p>
+                  <p className="mt-1 text-sm text-amber-700">
+                    Sebutkan nomor pesanan <span className="font-bold">{order.orderNumber}</span>
+                    {order.table && (
+                      <> atau <span className="font-bold">{order.table.name || `Meja ${order.table.number}`}</span></>
+                    )}
+                    {order.customerName && !order.table && (
+                      <> atas nama <span className="font-bold">{order.customerName}</span></>
+                    )}
+                  </p>
+                  <p className="mt-3 text-lg font-bold text-amber-900">
+                    {formatCurrency(order.grandTotal)}
+                  </p>
                 </div>
-                <p className="text-base font-bold text-amber-900">
-                  Silakan bayar di kasir
-                </p>
-                <p className="mt-1 text-sm text-amber-700">
-                  Sebutkan nomor pesanan <span className="font-bold">{order.orderNumber}</span>
-                  {order.table && (
-                    <> atau <span className="font-bold">{order.table.name || `Meja ${order.table.number}`}</span></>
-                  )}
-                  {order.customerName && !order.table && (
-                    <> atas nama <span className="font-bold">{order.customerName}</span></>
-                  )}
-                </p>
-                <p className="mt-3 text-lg font-bold text-amber-900">
-                  {formatCurrency(order.grandTotal)}
-                </p>
+
+                <Separator className="my-4 bg-amber-200" />
+
+                <div className="space-y-2 text-left text-sm text-amber-800">
+                  <p className="font-semibold">Langkah pembayaran:</p>
+                  <ol className="list-inside list-decimal space-y-1.5 pl-1">
+                    <li>Menuju ke kasir restoran</li>
+                    <li>Sebutkan nomor pesanan <span className="font-bold">{order.orderNumber}</span></li>
+                    <li>Lakukan pembayaran tunai atau kartu debit</li>
+                    <li>Tunggu konfirmasi dari kasir</li>
+                    <li>Pesanan akan segera diproses setelah pembayaran dikonfirmasi</li>
+                  </ol>
+                </div>
               </div>
             )}
 
-            {/* Payment info */}
+            {/* Online payment info */}
             {order.transaction && order.paymentStatus === "UNPAID" && (
-              <div className="rounded-2xl border-2 border-primary/20 bg-gradient-to-br from-primary/5 to-emerald-50 p-5 text-center shadow-sm print:hidden sm:p-6">
-                <p className="text-sm font-medium text-primary">
+              <div className="rounded-2xl border-2 border-primary/20 bg-gradient-to-br from-primary/5 to-emerald-50 p-5 shadow-sm print:hidden sm:p-6">
+                <p className="text-center text-sm font-medium text-primary">
                   Selesaikan pembayaran sebelum
                 </p>
-                <p className="mt-1 font-mono text-sm font-bold text-primary sm:text-base">
+                <p className="mt-1 text-center font-mono text-sm font-bold text-primary sm:text-base">
                   {formatDate(order.transaction.expiredTime)}
                 </p>
+
+                <p className="mt-3 text-center text-lg font-bold text-foreground">
+                  {formatCurrency(order.grandTotal)}
+                </p>
+
                 {order.transaction.payCode && (
                   <div className="mt-4 rounded-2xl border border-primary/15 bg-white p-4 shadow-inner">
-                    <p className="text-xs text-muted-foreground">Kode Bayar</p>
-                    <p className="mt-1 select-all break-all font-mono text-2xl font-bold tracking-wider text-foreground sm:text-3xl">
+                    <p className="text-center text-xs text-muted-foreground">Kode Bayar</p>
+                    <p className="mt-1 select-all break-all text-center font-mono text-2xl font-bold tracking-wider text-foreground sm:text-3xl">
                       {order.transaction.payCode}
                     </p>
                   </div>
                 )}
                 {order.transaction.qrUrl && (
-                  <div className="mt-4 inline-block rounded-2xl border border-primary/15 bg-white p-3 shadow-inner">
-                    <img
-                      src={order.transaction.qrUrl}
-                      alt="QR Payment"
-                      className="h-48 w-48 sm:h-56 sm:w-56"
-                    />
+                  <div className="mt-4 text-center">
+                    <div className="inline-block rounded-2xl border border-primary/15 bg-white p-3 shadow-inner">
+                      <img
+                        src={order.transaction.qrUrl}
+                        alt="QR Payment"
+                        className="h-48 w-48 sm:h-56 sm:w-56"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Payment instructions from Tripay */}
+                {instructions.length > 0 && (
+                  <div className="mt-5 space-y-2">
+                    <p className="text-sm font-semibold text-foreground">Cara Pembayaran</p>
+                    {instructions.map((inst, idx) => (
+                      <div key={idx} className="overflow-hidden rounded-xl border border-primary/10 bg-white">
+                        <button
+                          onClick={() => setOpenInstruction(openInstruction === idx ? -1 : idx)}
+                          className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium transition-colors hover:bg-muted/50"
+                        >
+                          {inst.title}
+                          <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${openInstruction === idx ? "rotate-180" : ""}`} />
+                        </button>
+                        {openInstruction === idx && (
+                          <div className="border-t px-4 py-3">
+                            <ol className="list-inside list-decimal space-y-2 text-sm text-muted-foreground">
+                              {inst.steps.map((step, si) => (
+                                <li key={si} dangerouslySetInnerHTML={{ __html: step }} />
+                              ))}
+                            </ol>
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>

@@ -25,9 +25,10 @@ export default function CheckoutPage() {
   const [selectedMethod, setSelectedMethod] = useState<string | null>(null);
   const [taxConfig, setTaxConfig] = useState<TaxConfig | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [redirecting, setRedirecting] = useState(false);
 
   useEffect(() => {
-    if (items.length === 0) {
+    if (items.length === 0 && !redirecting) {
       router.replace("/");
       return;
     }
@@ -79,17 +80,18 @@ export default function CheckoutPage() {
         }
       );
 
-      clearCart();
+      setRedirecting(true);
 
       const { orderId, transaction } = res.data;
       if (transaction.checkoutUrl) {
+        clearCart();
         window.location.href = transaction.checkoutUrl;
       } else {
         router.push(`/order/${orderId}`);
+        setTimeout(() => clearCart(), 100);
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Gagal membuat pesanan");
-    } finally {
       setSubmitting(false);
     }
   };

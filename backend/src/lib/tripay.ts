@@ -232,3 +232,31 @@ export async function checkTransactionStatus(reference: string): Promise<TripayT
 
   return data.data as TripayTxData;
 }
+
+export interface PaymentInstruction {
+  title: string;
+  steps: string[];
+}
+
+export async function getPaymentInstructions(
+  code: string,
+  payCode?: string | null,
+  amount?: number
+): Promise<PaymentInstruction[]> {
+  const config = await getTripayConfig();
+  const params = new URLSearchParams({ code });
+  if (payCode) params.set("pay_code", payCode);
+  if (amount) params.set("amount", String(amount));
+
+  const res = await fetch(
+    `${config.baseUrl}/payment/instruction?${params.toString()}`,
+    { headers: { Authorization: `Bearer ${config.apiKey}` } }
+  );
+
+  const data = (await res.json()) as { success?: boolean; message?: string; data?: unknown };
+  if (!data.success) {
+    throw new Error(data.message || "Gagal ambil instruksi pembayaran");
+  }
+
+  return (data.data as PaymentInstruction[]) || [];
+}

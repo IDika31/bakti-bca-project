@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { prisma } from "../lib/prisma.js";
 import { success, error } from "../lib/response.js";
+import { getPaymentInstructions } from "../lib/tripay.js";
 
 const publicRoutes = new Hono();
 
@@ -97,12 +98,14 @@ publicRoutes.get("/orders/:id", async (c) => {
       transaction: {
         select: {
           reference: true,
+          paymentMethod: true,
           payCode: true,
           checkoutUrl: true,
           qrUrl: true,
           qrString: true,
           status: true,
           expiredTime: true,
+          amount: true,
         },
       },
     },
@@ -110,6 +113,25 @@ publicRoutes.get("/orders/:id", async (c) => {
 
   if (!order) return error(c, "Pesanan tidak ditemukan", 404);
   return success(c, order);
+});
+
+// GET /payment-instructions?code=BRIVA&pay_code=XXX&amount=10000
+publicRoutes.get("/payment-instructions", async (c) => {
+  const code = c.req.query("code");
+  if (!code) return error(c, "Parameter code diperlukan", 400);
+  const payCode = c.req.query("pay_code");
+  const amount = c.req.query("amount");
+
+  try {
+    const instructions = await getPaymentInstructions(
+      code,
+      payCode,
+      amount ? Number(amount) : undefined
+    );
+    return success(c, instructions);
+  } catch (err) {
+    return error(c, err instanceof Error ? err.message : "Gagal ambil instruksi", 500);
+  }
 });
 
 // GET /operating-hours
