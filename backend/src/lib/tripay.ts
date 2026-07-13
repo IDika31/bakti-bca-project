@@ -75,7 +75,34 @@ interface CreateTransactionParams {
   returnUrl: string;
 }
 
-export async function createTransaction(params: CreateTransactionParams) {
+interface TripayTxData {
+  reference: string;
+  merchant_ref: string;
+  payment_method: string;
+  payment_name: string;
+  customer_name: string;
+  customer_email: string;
+  amount: number;
+  fee_merchant?: number;
+  fee_customer?: number;
+  total_fee?: number;
+  amount_received?: number;
+  pay_code?: string | null;
+  checkout_url?: string | null;
+  qr_url?: string | null;
+  qr_string?: string | null;
+  status: string;
+  expired_time: number;
+  instructions?: unknown;
+}
+
+interface TripayEnvelope<T> {
+  success: boolean;
+  message?: string;
+  data?: T;
+}
+
+export async function createTransaction(params: CreateTransactionParams): Promise<TripayTxData> {
   const config = await getTripayConfig();
   const signature = generateSignature(
     config.merchantCode,
@@ -112,12 +139,12 @@ export async function createTransaction(params: CreateTransactionParams) {
     body: JSON.stringify(body),
   });
 
-  const data = await res.json();
+  const data = (await res.json()) as { success?: boolean; message?: string; data?: unknown };
   if (!data.success) {
     throw new Error(data.message || "Gagal membuat transaksi Tripay");
   }
 
-  return data.data;
+  return data.data as TripayTxData;
 }
 
 export async function syncPaymentChannels() {
@@ -127,7 +154,7 @@ export async function syncPaymentChannels() {
     headers: { Authorization: `Bearer ${config.apiKey}` },
   });
 
-  const data = await res.json();
+  const data = (await res.json()) as { success?: boolean; message?: string; data?: unknown };
   if (!data.success) {
     throw new Error(data.message || "Gagal sinkronisasi channel pembayaran");
   }
@@ -145,7 +172,10 @@ export async function syncPaymentChannels() {
     active: boolean;
   }>;
 
+  const syncedCodes: string[] = [];
+
   for (const ch of channels) {
+    syncedCodes.push(ch.code);
     await prisma.paymentMethod.upsert({
       where: { code: ch.code },
       update: {
@@ -177,10 +207,17 @@ export async function syncPaymentChannels() {
     });
   }
 
+  if (syncedCodes.length > 0) {
+    await prisma.paymentMethod.updateMany({
+      where: { code: { notIn: [...syncedCodes, "CASHIER"] } },
+      data: { isActive: false, lastSyncedAt: new Date() },
+    });
+  }
+
   return channels.length;
 }
 
-export async function checkTransactionStatus(reference: string) {
+export async function checkTransactionStatus(reference: string): Promise<TripayTxData> {
   const config = await getTripayConfig();
 
   const res = await fetch(
@@ -188,10 +225,10 @@ export async function checkTransactionStatus(reference: string) {
     { headers: { Authorization: `Bearer ${config.apiKey}` } }
   );
 
-  const data = await res.json();
+  const data = (await res.json()) as { success?: boolean; message?: string; data?: unknown };
   if (!data.success) {
     throw new Error(data.message || "Gagal cek status transaksi");
   }
 
-  return data.data;
+  return data.data as TripayTxData;
 }

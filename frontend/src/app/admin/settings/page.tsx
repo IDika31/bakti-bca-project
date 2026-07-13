@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -10,9 +11,97 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
-import { api } from "@/lib/api";
+import { api, resolveImageUrl } from "@/lib/api";
 import { toast } from "sonner";
 import type { ApiResponse } from "@/types";
+
+function ImageField({
+  label,
+  folder,
+  value,
+  onChange,
+  token,
+}: {
+  label: string;
+  folder: "logo" | "banner";
+  value: string;
+  onChange: (v: string) => void;
+  token: string;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const handleFile = async (file: File) => {
+    if (!file.type.startsWith("image/")) return toast.error("Harus gambar");
+    if (file.size > 5 * 1024 * 1024) return toast.error("Maks 5MB");
+    setUploading(true);
+    try {
+      const res = await api.upload<ApiResponse<{ url: string }>>(
+        `/api/admin/upload/${folder}`,
+        file,
+        { token }
+      );
+      onChange(res.data.url);
+      toast.success("Terunggah");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Gagal");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div>
+      <Label>{label}</Label>
+      {value && (
+        <div className="relative mt-1 inline-block">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={resolveImageUrl(value)}
+            alt={label}
+            className="h-20 w-32 rounded-md border object-cover"
+          />
+          <button
+            type="button"
+            onClick={() => onChange("")}
+            className="absolute -right-2 -top-2 rounded-full bg-black/70 p-0.5 text-white"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+      )}
+      <div className="mt-1 flex gap-2">
+        <Input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="https://... atau upload"
+          className="flex-1"
+        />
+        <input
+          ref={ref}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) handleFile(f);
+            e.target.value = "";
+          }}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          disabled={uploading}
+          onClick={() => ref.current?.click()}
+          title="Upload"
+        >
+          <Upload className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 interface Profile {
   id: string;
@@ -79,34 +168,38 @@ export default function AdminSettingsPage() {
 
   const saveProfile = async () => {
     if (!profile) return;
+    const { id, ...data } = profile;
     try {
-      await api.put("/api/admin/settings/profile", profile, { token });
+      await api.put("/api/admin/settings/profile", data, { token });
       toast.success("Profil disimpan");
-    } catch { toast.error("Gagal menyimpan profil"); }
+    } catch (err) { toast.error(err instanceof Error ? err.message : "Gagal menyimpan profil"); }
   };
 
   const saveTax = async () => {
     if (!tax) return;
+    const { id, ...data } = tax;
     try {
-      await api.put("/api/admin/settings/tax", tax, { token });
+      await api.put("/api/admin/settings/tax", data, { token });
       toast.success("Pajak & servis disimpan");
-    } catch { toast.error("Gagal menyimpan"); }
+    } catch (err) { toast.error(err instanceof Error ? err.message : "Gagal menyimpan"); }
   };
 
   const saveHours = async () => {
     try {
-      await api.put("/api/admin/settings/hours", { hours }, { token });
+      const cleaned = hours.map(({ id, ...rest }) => rest);
+      await api.put("/api/admin/settings/hours", { hours: cleaned }, { token });
       toast.success("Jam operasional disimpan");
-    } catch { toast.error("Gagal menyimpan"); }
+    } catch (err) { toast.error(err instanceof Error ? err.message : "Gagal menyimpan"); }
   };
 
   const saveTripay = async () => {
     if (!tripay) return;
     if (tripay.mode === "PRODUCTION" && !confirm("Mode PRODUCTION akan memproses pembayaran sungguhan. Lanjutkan?")) return;
+    const { id, ...data } = tripay;
     try {
-      await api.put("/api/admin/settings/tripay", tripay, { token });
+      await api.put("/api/admin/settings/tripay", data, { token });
       toast.success("Konfigurasi Tripay disimpan");
-    } catch { toast.error("Gagal menyimpan"); }
+    } catch (err) { toast.error(err instanceof Error ? err.message : "Gagal menyimpan"); }
   };
 
   if (loading) {
@@ -154,14 +247,20 @@ export default function AdminSettingsPage() {
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label>URL Logo</Label>
-                      <Input value={profile.logoUrl || ""} onChange={(e) => setProfile({ ...profile, logoUrl: e.target.value })} className="mt-1" placeholder="https://..." />
-                    </div>
-                    <div>
-                      <Label>URL Banner</Label>
-                      <Input value={profile.bannerUrl || ""} onChange={(e) => setProfile({ ...profile, bannerUrl: e.target.value })} className="mt-1" placeholder="https://..." />
-                    </div>
+                    <ImageField
+                      label="Logo"
+                      folder="logo"
+                      value={profile.logoUrl || ""}
+                      onChange={(v) => setProfile({ ...profile, logoUrl: v || null })}
+                      token={token}
+                    />
+                    <ImageField
+                      label="Banner"
+                      folder="banner"
+                      value={profile.bannerUrl || ""}
+                      onChange={(v) => setProfile({ ...profile, bannerUrl: v || null })}
+                      token={token}
+                    />
                   </div>
                   <Button onClick={saveProfile}>Simpan Profil</Button>
                 </>

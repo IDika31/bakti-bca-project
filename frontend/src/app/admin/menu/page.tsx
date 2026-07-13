@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Plus, Pencil, Trash2, Upload, X, ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { api } from "@/lib/api";
+import { api, resolveImageUrl } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
 import { toast } from "sonner";
 import type { ApiResponse, PaginatedResponse, Category } from "@/types";
@@ -32,6 +32,9 @@ export default function AdminMenuPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<MenuItemAdmin | null>(null);
   const [form, setForm] = useState({ name: "", description: "", price: 0, categoryId: "", imageUrl: "" });
+  const [imageMode, setImageMode] = useState<"upload" | "url">("upload");
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const token = typeof window !== "undefined" ? localStorage.getItem("admin-token") || "" : "";
 
@@ -49,6 +52,7 @@ export default function AdminMenuPage() {
   const openCreate = () => {
     setEditing(null);
     setForm({ name: "", description: "", price: 0, categoryId: categories[0]?.id || "", imageUrl: "" });
+    setImageMode("upload");
     setDialogOpen(true);
   };
 
@@ -61,7 +65,33 @@ export default function AdminMenuPage() {
       categoryId: item.categoryId,
       imageUrl: item.imageUrl || "",
     });
+    setImageMode(item.imageUrl && /^https?:\/\//i.test(item.imageUrl) ? "url" : "upload");
     setDialogOpen(true);
+  };
+
+  const handleFile = async (file: File) => {
+    if (!file.type.startsWith("image/")) {
+      toast.error("File harus berupa gambar");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Ukuran maksimal 5MB");
+      return;
+    }
+    setUploading(true);
+    try {
+      const res = await api.upload<ApiResponse<{ url: string }>>(
+        "/api/admin/upload/menu",
+        file,
+        { token }
+      );
+      setForm((f) => ({ ...f, imageUrl: res.data.url }));
+      toast.success("Gambar terunggah");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Gagal upload");
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleSubmit = async () => {
@@ -142,8 +172,81 @@ export default function AdminMenuPage() {
                 </Select>
               </div>
               <div>
-                <Label>URL Gambar</Label>
-                <Input value={form.imageUrl} onChange={(e) => setForm({ ...form, imageUrl: e.target.value })} className="mt-1" placeholder="https://..." />
+                <Label>Gambar Menu</Label>
+                <div className="mt-1 flex gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setImageMode("upload")}
+                    className={`rounded-md px-3 py-1 ${imageMode === "upload" ? "bg-primary text-primary-foreground" : "bg-muted"}`}
+                  >
+                    Upload File
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setImageMode("url")}
+                    className={`rounded-md px-3 py-1 ${imageMode === "url" ? "bg-primary text-primary-foreground" : "bg-muted"}`}
+                  >
+                    Pakai URL
+                  </button>
+                </div>
+
+                {form.imageUrl && (
+                  <div className="relative mt-2 h-32 w-32 overflow-hidden rounded-md border">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={resolveImageUrl(form.imageUrl)}
+                      alt="preview"
+                      className="h-full w-full object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setForm({ ...form, imageUrl: "" })}
+                      className="absolute right-1 top-1 rounded-full bg-black/60 p-1 text-white"
+                      aria-label="Hapus gambar"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                )}
+
+                {imageMode === "upload" ? (
+                  <div className="mt-2">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) handleFile(f);
+                        e.target.value = "";
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="gap-2"
+                      disabled={uploading}
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      {uploading ? (
+                        <>Mengunggah...</>
+                      ) : form.imageUrl ? (
+                        <><ImageIcon className="h-4 w-4" /> Ganti Gambar</>
+                      ) : (
+                        <><Upload className="h-4 w-4" /> Pilih Gambar</>
+                      )}
+                    </Button>
+                    <p className="mt-1 text-xs text-muted-foreground">JPG/PNG/WEBP/GIF, maks 5MB</p>
+                  </div>
+                ) : (
+                  <Input
+                    value={form.imageUrl}
+                    onChange={(e) => setForm({ ...form, imageUrl: e.target.value })}
+                    className="mt-2"
+                    placeholder="https://..."
+                  />
+                )}
               </div>
               <Button className="w-full" onClick={handleSubmit}>Simpan</Button>
             </div>

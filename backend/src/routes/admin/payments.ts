@@ -12,6 +12,30 @@ paymentRoutes.get("/", async (c) => {
   return success(c, methods);
 });
 
+paymentRoutes.get("/cashier", async (c) => {
+  const method = await prisma.paymentMethod.findUnique({
+    where: { code: "CASHIER" },
+  });
+  return success(c, method);
+});
+
+paymentRoutes.put("/cashier", async (c) => {
+  const { isShown } = await c.req.json();
+  const method = await prisma.paymentMethod.upsert({
+    where: { code: "CASHIER" },
+    update: { isShown: !!isShown, isActive: true },
+    create: {
+      code: "CASHIER",
+      name: "Bayar di Kasir",
+      groupName: "CASHIER",
+      type: "direct",
+      isActive: true,
+      isShown: !!isShown,
+    },
+  });
+  return success(c, method);
+});
+
 paymentRoutes.post("/sync", async (c) => {
   try {
     const count = await syncPaymentChannels();

@@ -10,11 +10,19 @@ export const categorySchema = z.object({
   sortOrder: z.number().int().optional(),
 });
 
+const imageUrlSchema = z
+  .string()
+  .refine((v) => /^https?:\/\//.test(v) || v.startsWith("/uploads/"), {
+    message: "Harus URL http(s) atau path /uploads/...",
+  })
+  .optional()
+  .nullable();
+
 export const menuItemSchema = z.object({
   name: z.string().min(1).max(200),
   description: z.string().max(1000).optional(),
   price: z.number().int().min(0),
-  imageUrl: z.string().url().optional().nullable(),
+  imageUrl: imageUrlSchema,
   isAvailable: z.boolean().optional(),
   categoryId: z.string().uuid(),
 });
@@ -44,12 +52,12 @@ export const tableSchema = z.object({
 
 export const settingsSchema = z.object({
   name: z.string().min(1).max(200),
-  description: z.string().max(1000).optional(),
-  address: z.string().max(500).optional(),
-  phone: z.string().max(20).optional(),
-  email: z.string().email().optional(),
-  logoUrl: z.string().url().optional().nullable(),
-  bannerUrl: z.string().url().optional().nullable(),
+  description: z.string().max(1000).optional().nullable(),
+  address: z.string().max(500).optional().nullable(),
+  phone: z.string().max(20).optional().nullable(),
+  email: z.union([z.string().email(), z.literal(""), z.null()]).optional(),
+  logoUrl: imageUrlSchema,
+  bannerUrl: imageUrlSchema,
 });
 
 export const taxConfigSchema = z.object({

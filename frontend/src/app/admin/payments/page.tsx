@@ -15,10 +15,13 @@ interface PaymentMethodAdmin {
   id: string;
   code: string;
   name: string;
-  group: string;
+  groupName: string;
   type: string;
-  feeFlat: number;
-  feePercent: number;
+  feeMerchant: number;
+  feeCustomer: number;
+  minAmount: number | null;
+  maxAmount: number | null;
+  iconUrl: string | null;
   isActive: boolean;
   isShown: boolean;
   lastSyncedAt: string | null;
@@ -36,12 +39,17 @@ export default function AdminPaymentsPage() {
   const [methods, setMethods] = useState<PaymentMethodAdmin[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [cashierEnabled, setCashierEnabled] = useState(false);
 
   const token = typeof window !== "undefined" ? localStorage.getItem("admin-token") || "" : "";
 
   const fetchData = async () => {
-    const res = await api.get<ApiResponse<PaymentMethodAdmin[]>>("/api/admin/payment-methods", { token });
-    setMethods(res.data);
+    const [methodsRes, cashierRes] = await Promise.all([
+      api.get<ApiResponse<PaymentMethodAdmin[]>>("/api/admin/payments", { token }),
+      api.get<ApiResponse<PaymentMethodAdmin | null>>("/api/admin/payments/cashier", { token }),
+    ]);
+    setMethods(methodsRes.data.filter((m) => m.code !== "CASHIER"));
+    setCashierEnabled(cashierRes.data?.isShown ?? false);
     setLoading(false);
   };
 
@@ -50,7 +58,7 @@ export default function AdminPaymentsPage() {
   const handleSync = async () => {
     setSyncing(true);
     try {
-      await api.post("/api/admin/payment-methods/sync", {}, { token });
+      await api.post("/api/admin/payments/sync", {}, { token });
       toast.success("Metode pembayaran disinkronkan dari Tripay");
       fetchData();
     } catch (err) {
@@ -60,9 +68,19 @@ export default function AdminPaymentsPage() {
     }
   };
 
+  const toggleCashier = async (enabled: boolean) => {
+    try {
+      await api.put("/api/admin/payments/cashier", { isShown: enabled }, { token });
+      setCashierEnabled(enabled);
+      toast.success(enabled ? "Bayar di Kasir diaktifkan" : "Bayar di Kasir dinonaktifkan");
+    } catch {
+      toast.error("Gagal mengubah status");
+    }
+  };
+
   const toggleShown = async (id: string, isShown: boolean) => {
     try {
-      await api.patch(`/api/admin/payment-methods/${id}`, { isShown }, { token });
+      await api.patch(`/api/admin/payments/${id}`, { isShown }, { token });
       fetchData();
     } catch (err) {
       toast.error("Gagal mengubah status");
@@ -70,7 +88,7 @@ export default function AdminPaymentsPage() {
   };
 
   const grouped = methods.reduce<Record<string, PaymentMethodAdmin[]>>((acc, m) => {
-    const group = m.group || "OTHER";
+    const group = m.groupName || "OTHER";
     if (!acc[group]) acc[group] = [];
     acc[group].push(m);
     return acc;
@@ -85,6 +103,21 @@ export default function AdminPaymentsPage() {
           Sinkronisasi Tripay
         </Button>
       </div>
+
+      <Card>
+        <CardContent className="flex items-center justify-between p-4">
+          <div>
+            <p className="font-medium">Bayar di Kasir</p>
+            <p className="text-xs text-muted-foreground">
+              Pelanggan bisa memilih bayar langsung di kasir
+            </p>
+          </div>
+          <Switch
+            checked={cashierEnabled}
+            onCheckedChange={toggleCashier}
+          />
+        </CardContent>
+      </Card>
 
       {loading ? (
         <div className="space-y-3">
@@ -110,7 +143,7 @@ export default function AdminPaymentsPage() {
                   <div className="flex-1">
                     <p className="font-medium">{method.name}</p>
                     <p className="text-xs text-muted-foreground">
-                      {method.code} · Fee: Rp {method.feeFlat.toLocaleString("id-ID")} + {method.feePercent}%
+                      {method.code} · Fee merchant: Rp {(method.feeMerchant ?? 0).toLocaleString("id-ID")} · Fee customer: Rp {(method.feeCustomer ?? 0).toLocaleString("id-ID")}
                     </p>
                   </div>
                   {!method.isActive && (

@@ -19,7 +19,12 @@ settingsRoutes.get("/profile", async (c) => {
 settingsRoutes.put("/profile", async (c) => {
   const body = await c.req.json();
   const parsed = settingsSchema.safeParse(body);
-  if (!parsed.success) return error(c, "Data tidak valid", 400);
+  if (!parsed.success) {
+    const detail = parsed.error.issues
+      .map((i) => `${i.path.join(".")}: ${i.message}`)
+      .join("; ");
+    return error(c, `Data tidak valid — ${detail}`, 400);
+  }
 
   const profile = await prisma.restaurantProfile.upsert({
     where: { id: "default" },
@@ -38,7 +43,12 @@ settingsRoutes.get("/tax", async (c) => {
 settingsRoutes.put("/tax", async (c) => {
   const body = await c.req.json();
   const parsed = taxConfigSchema.safeParse(body);
-  if (!parsed.success) return error(c, "Data tidak valid", 400);
+  if (!parsed.success) {
+    const detail = parsed.error.issues
+      .map((i) => `${i.path.join(".")}: ${i.message}`)
+      .join("; ");
+    return error(c, `Data tidak valid — ${detail}`, 400);
+  }
 
   const config = await prisma.taxServiceConfig.upsert({
     where: { id: "default" },
@@ -59,7 +69,12 @@ settingsRoutes.get("/hours", async (c) => {
 settingsRoutes.put("/hours", async (c) => {
   const body = await c.req.json();
   const parsed = operatingHoursSchema.safeParse(body);
-  if (!parsed.success) return error(c, "Data tidak valid", 400);
+  if (!parsed.success) {
+    const detail = parsed.error.issues
+      .map((i) => `${i.path.join(".")}: ${i.message}`)
+      .join("; ");
+    return error(c, `Data tidak valid — ${detail}`, 400);
+  }
 
   for (const h of parsed.data.hours) {
     await prisma.operatingHours.upsert({
@@ -94,7 +109,12 @@ settingsRoutes.get("/tripay", async (c) => {
 settingsRoutes.put("/tripay", async (c) => {
   const body = await c.req.json();
   const parsed = tripayConfigSchema.safeParse(body);
-  if (!parsed.success) return error(c, "Data tidak valid", 400);
+  if (!parsed.success) {
+    const detail = parsed.error.issues
+      .map((i) => `${i.path.join(".")}: ${i.message}`)
+      .join("; ");
+    return error(c, `Data tidak valid — ${detail}`, 400);
+  }
 
   const config = await prisma.tripayConfig.upsert({
     where: { id: "default" },

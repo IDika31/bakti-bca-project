@@ -98,6 +98,20 @@ checkoutRoute.post("/checkout", async (c) => {
     return newOrder;
   });
 
+  // Cashier payment — skip Tripay entirely
+  if (data.paymentMethodCode === "CASHIER") {
+    return success(
+      c,
+      {
+        orderId: order.id,
+        orderNumber,
+        grandTotal: priceBreakdown.grandTotal,
+        transaction: { reference: orderNumber },
+      },
+      201
+    );
+  }
+
   // Create Tripay transaction
   try {
     const menuItemMap = new Map(menuItems.map((m) => [m.id, m]));

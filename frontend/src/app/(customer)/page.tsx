@@ -11,7 +11,6 @@ import { CategoryTabs } from "@/components/customer/category-tabs";
 import { MenuSearch } from "@/components/customer/menu-search";
 import { MenuCard } from "@/components/customer/menu-card";
 import { CartFab } from "@/components/customer/cart-fab";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { MenuItem, Category, RestaurantProfile, ApiResponse } from "@/types";
 
@@ -63,34 +62,78 @@ export default function MenuPage() {
   };
 
   return (
-    <div className="pb-24">
+    <div className="pb-28">
       <RestaurantHeader profile={profile} />
 
+      {/* Table indicator */}
       {isDineIn && table && (
-        <div className="px-4 pb-2">
-          <Badge variant="secondary" className="text-sm">
-            📍 {table.name || `Meja ${table.number}`}
-          </Badge>
+        <div className="mx-auto mt-4 max-w-6xl px-4 sm:px-6 md:px-8">
+          <div className="flex items-center gap-3 rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent px-4 py-3 shadow-sm sm:px-5">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/15 text-lg">
+              📍
+            </div>
+            <div className="flex-1">
+              <p className="text-xs text-muted-foreground">Kamu sedang di</p>
+              <p className="font-semibold text-primary">
+                {table.name || `Meja ${table.number}`}
+              </p>
+            </div>
+            <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
+              Dine In
+            </span>
+          </div>
         </div>
       )}
 
-      <div className="space-y-3">
+      {/* Sticky search + tabs */}
+      <div className="sticky top-0 z-20 mt-4 space-y-2 border-b border-border/50 bg-background/80 py-3 backdrop-blur-lg">
         <MenuSearch value={search} onChange={setSearch} />
-        <CategoryTabs categories={categories} selected={selectedCategory} onSelect={setSelectedCategory} />
+        <div className="mx-auto max-w-6xl">
+          <CategoryTabs
+            categories={categories}
+            selected={selectedCategory}
+            onSelect={setSelectedCategory}
+          />
+        </div>
+      </div>
 
+      {/* Menu grid */}
+      <div className="mx-auto mt-4 max-w-6xl px-4 sm:px-6 md:px-8">
         {loading ? (
-          <div className="grid grid-cols-2 gap-3 px-4">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <Skeleton key={i} className="aspect-[3/4] rounded-xl" />
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-5">
+            {Array.from({ length: 10 }).map((_, i) => (
+              <div
+                key={i}
+                className="overflow-hidden rounded-2xl border border-border bg-card"
+              >
+                <Skeleton className="aspect-[4/3] w-full rounded-none" />
+                <div className="space-y-2 p-3">
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-3 w-1/2" />
+                  <div className="flex justify-between pt-1">
+                    <Skeleton className="h-4 w-16" />
+                    <Skeleton className="h-8 w-8 rounded-full" />
+                  </div>
+                </div>
+              </div>
             ))}
           </div>
         ) : menuItems.length === 0 ? (
-          <div className="px-4 py-12 text-center text-muted-foreground">
-            <p className="text-4xl">🍽️</p>
-            <p className="mt-2">Menu tidak ditemukan</p>
+          <div className="flex flex-col items-center gap-4 py-20 text-center">
+            <div className="flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-muted to-muted/40 text-5xl shadow-inner">
+              🍽️
+            </div>
+            <div>
+              <p className="text-lg font-semibold text-foreground">
+                Menu tidak ditemukan
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Coba kata kunci lain atau pilih kategori berbeda
+              </p>
+            </div>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-3 px-4 sm:grid-cols-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-5">
             {menuItems.map((item) => (
               <MenuCard key={item.id} item={item} onAdd={handleAdd} />
             ))}

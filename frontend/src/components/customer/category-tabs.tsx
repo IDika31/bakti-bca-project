@@ -20,34 +20,45 @@ export function CategoryTabs({ categories, selected, onSelect }: CategoryTabsPro
     }
   }, [selected]);
 
+  if (categories.length === 0) return null;
+
   return (
-    <div ref={scrollRef} className="flex gap-2 overflow-x-auto px-4 py-2 scrollbar-hide">
-      <button
-        onClick={() => onSelect(null)}
-        className={cn(
-          "whitespace-nowrap rounded-full px-4 py-1.5 text-sm font-medium transition-colors",
-          !selected
-            ? "bg-primary text-primary-foreground"
-            : "bg-muted text-muted-foreground hover:bg-muted/80"
-        )}
+    <div className="relative">
+      {/* Fade edges */}
+      <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-6 bg-gradient-to-r from-background to-transparent sm:w-8" />
+      <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-6 bg-gradient-to-l from-background to-transparent sm:w-8" />
+
+      <div
+        ref={scrollRef}
+        className="flex gap-2 overflow-x-auto px-4 py-2 scrollbar-hide sm:px-6 md:px-8"
       >
-        Semua
-      </button>
-      {categories.map((cat) => (
         <button
-          key={cat.id}
-          data-id={cat.id}
-          onClick={() => onSelect(cat.id)}
+          onClick={() => onSelect(null)}
           className={cn(
-            "whitespace-nowrap rounded-full px-4 py-1.5 text-sm font-medium transition-colors",
-            selected === cat.id
-              ? "bg-primary text-primary-foreground"
-              : "bg-muted text-muted-foreground hover:bg-muted/80"
+            "flex-shrink-0 whitespace-nowrap rounded-full px-5 py-2 text-sm font-medium transition-all duration-200",
+            !selected
+              ? "bg-primary text-primary-foreground shadow-lg shadow-primary/30 ring-2 ring-primary/20 ring-offset-2 ring-offset-background"
+              : "border border-border bg-card text-muted-foreground hover:-translate-y-0.5 hover:border-primary/40 hover:text-foreground hover:shadow-md"
           )}
         >
-          {cat.name}
+          Semua
         </button>
-      ))}
+        {categories.map((cat) => (
+          <button
+            key={cat.id}
+            data-id={cat.id}
+            onClick={() => onSelect(cat.id)}
+            className={cn(
+              "flex-shrink-0 whitespace-nowrap rounded-full px-5 py-2 text-sm font-medium transition-all duration-200",
+              selected === cat.id
+                ? "bg-primary text-primary-foreground shadow-lg shadow-primary/30 ring-2 ring-primary/20 ring-offset-2 ring-offset-background"
+                : "border border-border bg-card text-muted-foreground hover:-translate-y-0.5 hover:border-primary/40 hover:text-foreground hover:shadow-md"
+            )}
+          >
+            {cat.name}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

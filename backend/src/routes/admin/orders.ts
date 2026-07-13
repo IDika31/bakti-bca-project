@@ -87,4 +87,43 @@ orderRoutes.patch("/:id", async (c) => {
   return success(c, updated);
 });
 
+// PATCH /admin/orders/:id/pay — mark cashier order as paid
+orderRoutes.patch("/:id/pay", async (c) => {
+  const id = c.req.param("id");
+
+  const order = await prisma.order.findUnique({ where: { id } });
+  if (!order) return error(c, "Pesanan tidak ditemukan", 404);
+  if (order.paymentStatus === "PAID") return error(c, "Pesanan sudah dibayar", 400);
+
+  const updated = await prisma.order.update({
+    where: { id },
+    data: {
+      paymentStatus: "PAID",
+      orderStatus: order.orderStatus === "PENDING" ? "CONFIRMED" : order.orderStatus,
+    },
+  });
+
+  return success(c, updated);
+});
+
+// PATCH /admin/orders/:id/complete — mark as completed (+ paid if unpaid)
+orderRoutes.patch("/:id/complete", async (c) => {
+  const id = c.req.param("id");
+
+  const order = await prisma.order.findUnique({ where: { id } });
+  if (!order) return error(c, "Pesanan tidak ditemukan", 404);
+  if (order.orderStatus === "COMPLETED") return error(c, "Pesanan sudah selesai", 400);
+  if (order.orderStatus === "CANCELLED") return error(c, "Pesanan sudah dibatalkan", 400);
+
+  const updated = await prisma.order.update({
+    where: { id },
+    data: {
+      orderStatus: "COMPLETED",
+      paymentStatus: order.paymentStatus === "UNPAID" ? "PAID" : order.paymentStatus,
+    },
+  });
+
+  return success(c, updated);
+});
+
 export default orderRoutes;

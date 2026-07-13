@@ -42,7 +42,7 @@ reportRoutes.get("/", async (c) => {
     existing.tax += order.taxAmount;
     dailyMap.set(day, existing);
 
-    const method = order.transaction?.paymentMethod || "unknown";
+    const method = order.transaction?.paymentMethod || "Bayar di Kasir";
     const methodExisting = methodMap.get(method) || { count: 0, total: 0 };
     methodExisting.count += 1;
     methodExisting.total += order.grandTotal;

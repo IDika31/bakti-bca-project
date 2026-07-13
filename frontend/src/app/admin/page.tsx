@@ -2,45 +2,75 @@
 
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DollarSign, ShoppingBag, Clock, UtensilsCrossed } from "lucide-react";
+import {
+  DollarSign,
+  ShoppingBag,
+  Clock,
+  UtensilsCrossed,
+  TrendingUp,
+  ArrowRight,
+} from "lucide-react";
 import { api } from "@/lib/api";
-import { formatCurrency, formatDate } from "@/lib/format";
+import { formatCurrency, formatDate, ORDER_STATUS_LABELS } from "@/lib/format";
 import type { ApiResponse } from "@/types";
+import Link from "next/link";
 
 interface DashboardData {
   todayOrders: number;
   todayRevenue: number;
   pendingOrders: number;
   totalMenuItems: number;
+  activeTables: number;
   recentOrders: Array<{
     id: string;
     orderNumber: string;
     grandTotal: number;
     orderStatus: string;
+    orderType: string;
+    customerName: string | null;
     createdAt: string;
     table: { number: number; name: string | null } | null;
+    _count: { items: number };
   }>;
 }
+
+const STATUS_COLORS: Record<string, string> = {
+  PENDING: "bg-slate-100 text-slate-700",
+  CONFIRMED: "bg-emerald-100 text-emerald-700",
+  PREPARING: "bg-blue-100 text-blue-700",
+  READY: "bg-green-100 text-green-700",
+  COMPLETED: "bg-gray-100 text-gray-600",
+  CANCELLED: "bg-red-100 text-red-700",
+};
 
 export default function AdminDashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem("admin-token") || "";
+    const token = localStorage.getItem("admin-token");
+    if (!token) {
+      setLoading(false);
+      return;
+    }
     api
       .get<ApiResponse<DashboardData>>("/api/admin/dashboard", { token })
       .then((res) => setData(res.data))
+      .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
   if (loading) {
     return (
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <Skeleton key={i} className="h-28" />
-        ))}
+      <div className="space-y-6">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-32 rounded-2xl" />
+          ))}
+        </div>
+        <Skeleton className="h-64 rounded-2xl" />
       </div>
     );
   }
@@ -48,50 +78,141 @@ export default function AdminDashboardPage() {
   if (!data) return null;
 
   const stats = [
-    { label: "Pendapatan Hari Ini", value: formatCurrency(data.todayRevenue), icon: DollarSign },
-    { label: "Pesanan Hari Ini", value: data.todayOrders.toString(), icon: ShoppingBag },
-    { label: "Pesanan Diproses", value: data.pendingOrders.toString(), icon: Clock },
-    { label: "Menu Aktif", value: data.totalMenuItems.toString(), icon: UtensilsCrossed },
+    {
+      label: "Pendapatan Hari Ini",
+      value: formatCurrency(data.todayRevenue),
+      icon: DollarSign,
+      color: "bg-emerald-500/10 text-emerald-600",
+      ring: "ring-emerald-500/20",
+    },
+    {
+      label: "Pesanan Hari Ini",
+      value: data.todayOrders.toString(),
+      icon: ShoppingBag,
+      color: "bg-blue-500/10 text-blue-600",
+      ring: "ring-blue-500/20",
+    },
+    {
+      label: "Sedang Diproses",
+      value: data.pendingOrders.toString(),
+      icon: Clock,
+      color: "bg-amber-500/10 text-amber-600",
+      ring: "ring-amber-500/20",
+    },
+    {
+      label: "Menu Aktif",
+      value: data.totalMenuItems.toString(),
+      icon: UtensilsCrossed,
+      color: "bg-purple-500/10 text-purple-600",
+      ring: "ring-purple-500/20",
+    },
   ];
 
   return (
     <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-bold tracking-tight">Dashboard</h2>
+          <p className="text-sm text-muted-foreground">
+            Ringkasan aktivitas restoran hari ini
+          </p>
+        </div>
+        <Link
+          href="/admin/reports"
+          className="flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+        >
+          <TrendingUp className="h-4 w-4" />
+          Laporan
+        </Link>
+      </div>
+
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat) => (
-          <Card key={stat.label}>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">{stat.label}</CardTitle>
-              <stat.icon className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stat.value}</div>
+          <Card
+            key={stat.label}
+            className="relative overflow-hidden rounded-2xl border-0 shadow-sm"
+          >
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    {stat.label}
+                  </p>
+                  <p className="text-2xl font-bold tracking-tight">
+                    {stat.value}
+                  </p>
+                </div>
+                <div
+                  className={`flex h-11 w-11 items-center justify-center rounded-xl ${stat.color} ring-1 ${stat.ring}`}
+                >
+                  <stat.icon className="h-5 w-5" />
+                </div>
+              </div>
             </CardContent>
           </Card>
         ))}
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Pesanan Terbaru</CardTitle>
+      <Card className="rounded-2xl border-0 shadow-sm">
+        <CardHeader className="flex flex-row items-center justify-between pb-3">
+          <CardTitle className="text-base font-semibold">
+            Pesanan Terbaru
+          </CardTitle>
+          <Link
+            href="/admin/orders"
+            className="flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+          >
+            Lihat Semua
+            <ArrowRight className="h-3 w-3" />
+          </Link>
         </CardHeader>
         <CardContent>
           {data.recentOrders.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Belum ada pesanan</p>
+            <div className="flex flex-col items-center py-10 text-center">
+              <ShoppingBag className="mb-3 h-10 w-10 text-muted-foreground/40" />
+              <p className="text-sm font-medium text-muted-foreground">
+                Belum ada pesanan hari ini
+              </p>
+              <p className="text-xs text-muted-foreground/70">
+                Pesanan akan muncul di sini
+              </p>
+            </div>
           ) : (
-            <div className="space-y-3">
+            <div className="divide-y">
               {data.recentOrders.map((order) => (
-                <div key={order.id} className="flex items-center justify-between text-sm">
-                  <div>
-                    <span className="font-medium">{order.orderNumber}</span>
-                    {order.table && (
-                      <span className="ml-2 text-muted-foreground">
-                        · {order.table.name || `Meja ${order.table.number}`}
+                <div
+                  key={order.id}
+                  className="flex items-center gap-3 py-3 first:pt-0 last:pb-0"
+                >
+                  <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-muted text-xs font-bold text-muted-foreground">
+                    {order._count.items}x
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold">
+                        {order.orderNumber}
                       </span>
-                    )}
+                      <Badge
+                        className={`text-[10px] px-1.5 py-0 ${STATUS_COLORS[order.orderStatus] || ""}`}
+                      >
+                        {ORDER_STATUS_LABELS[order.orderStatus] || order.orderStatus}
+                      </Badge>
+                    </div>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {order.table
+                        ? order.table.name || `Meja ${order.table.number}`
+                        : order.customerName || "Take Away"}
+                      {" · "}
+                      {order.orderType === "DINE_IN" ? "Dine In" : "Take Away"}
+                    </p>
                   </div>
                   <div className="text-right">
-                    <span className="font-medium">{formatCurrency(order.grandTotal)}</span>
-                    <p className="text-xs text-muted-foreground">{formatDate(order.createdAt)}</p>
+                    <p className="text-sm font-semibold">
+                      {formatCurrency(order.grandTotal)}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {formatDate(order.createdAt)}
+                    </p>
                   </div>
                 </div>
               ))}
