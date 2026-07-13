@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Plus, Pencil, Trash2, Upload, X, ImageIcon } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, X, ImageIcon, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
@@ -230,7 +230,7 @@ export default function AdminMenuPage() {
                       onClick={() => fileInputRef.current?.click()}
                     >
                       {uploading ? (
-                        <>Mengunggah...</>
+                        <><Loader2 className="h-4 w-4 animate-spin" /> Mengunggah...</>
                       ) : form.imageUrl ? (
                         <><ImageIcon className="h-4 w-4" /> Ganti Gambar</>
                       ) : (
