@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Plus, Pencil, Trash2, Upload, X, ImageIcon, Loader2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, X, ImageIcon, Loader2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { api, resolveImageUrl } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
 import { toast } from "sonner";
@@ -34,6 +35,9 @@ export default function AdminMenuPage() {
   const [form, setForm] = useState({ name: "", description: "", price: 0, categoryId: "", imageUrl: "" });
   const [imageMode, setImageMode] = useState<"upload" | "url">("upload");
   const [uploading, setUploading] = useState(false);
+  const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("ALL");
+  const [deleteTarget, setDeleteTarget] = useState<MenuItemAdmin | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const token = typeof window !== "undefined" ? localStorage.getItem("admin-token") || "" : "";
@@ -48,6 +52,12 @@ export default function AdminMenuPage() {
   };
 
   useEffect(() => { fetchData(); }, []);
+
+  const filtered = items.filter((item) => {
+    const matchSearch = !search || item.name.toLowerCase().includes(search.toLowerCase());
+    const matchCategory = categoryFilter === "ALL" || item.categoryId === categoryFilter;
+    return matchSearch && matchCategory;
+  });
 
   const openCreate = () => {
     setEditing(null);
@@ -118,11 +128,12 @@ export default function AdminMenuPage() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Hapus menu ini?")) return;
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
     try {
-      await api.delete(`/api/admin/menu/${id}`, { token });
+      await api.delete(`/api/admin/menu/${deleteTarget.id}`, { token });
       toast.success("Menu dihapus");
+      setDeleteTarget(null);
       fetchData();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Gagal menghapus");
@@ -142,124 +153,53 @@ export default function AdminMenuPage() {
           <Plus className="h-4 w-4" />
           Tambah Menu
         </Button>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{editing ? "Edit Menu" : "Tambah Menu"}</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-3">
-              <div>
-                <Label>Nama</Label>
-                <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="mt-1" />
-              </div>
-              <div>
-                <Label>Deskripsi</Label>
-                <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="mt-1" rows={2} />
-              </div>
-              <div>
-                <Label>Harga (Rp)</Label>
-                <Input type="number" value={form.price} onChange={(e) => setForm({ ...form, price: Number(e.target.value) })} className="mt-1" />
-              </div>
-              <div>
-                <Label>Kategori</Label>
-                <Select value={form.categoryId} onValueChange={(v) => setForm({ ...form, categoryId: v ?? "" })}>
-                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {categories.map((cat) => (
-                      <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Gambar Menu</Label>
-                <div className="mt-1 flex gap-2 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => setImageMode("upload")}
-                    className={`rounded-md px-3 py-1 ${imageMode === "upload" ? "bg-primary text-primary-foreground" : "bg-muted"}`}
-                  >
-                    Upload File
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setImageMode("url")}
-                    className={`rounded-md px-3 py-1 ${imageMode === "url" ? "bg-primary text-primary-foreground" : "bg-muted"}`}
-                  >
-                    Pakai URL
-                  </button>
-                </div>
-
-                {form.imageUrl && (
-                  <div className="relative mt-2 h-32 w-32 overflow-hidden rounded-md border">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={resolveImageUrl(form.imageUrl)}
-                      alt="preview"
-                      className="h-full w-full object-cover"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setForm({ ...form, imageUrl: "" })}
-                      className="absolute right-1 top-1 rounded-full bg-black/60 p-1 text-white"
-                      aria-label="Hapus gambar"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
-                )}
-
-                {imageMode === "upload" ? (
-                  <div className="mt-2">
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp,image/gif"
-                      className="hidden"
-                      onChange={(e) => {
-                        const f = e.target.files?.[0];
-                        if (f) handleFile(f);
-                        e.target.value = "";
-                      }}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="gap-2"
-                      disabled={uploading}
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      {uploading ? (
-                        <><Loader2 className="h-4 w-4 animate-spin" /> Mengunggah...</>
-                      ) : form.imageUrl ? (
-                        <><ImageIcon className="h-4 w-4" /> Ganti Gambar</>
-                      ) : (
-                        <><Upload className="h-4 w-4" /> Pilih Gambar</>
-                      )}
-                    </Button>
-                    <p className="mt-1 text-xs text-muted-foreground">JPG/PNG/WEBP/GIF, maks 5MB</p>
-                  </div>
-                ) : (
-                  <Input
-                    value={form.imageUrl}
-                    onChange={(e) => setForm({ ...form, imageUrl: e.target.value })}
-                    className="mt-2"
-                    placeholder="https://..."
-                  />
-                )}
-              </div>
-              <Button className="w-full" onClick={handleSubmit}>Simpan</Button>
-            </div>
-          </DialogContent>
-        </Dialog>
       </div>
 
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Cari menu..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <Select value={categoryFilter} onValueChange={(v) => setCategoryFilter(v ?? "ALL")}>
+          <SelectTrigger className="w-full sm:w-44">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">Semua Kategori</SelectItem>
+            {categories.map((cat) => (
+              <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <p className="text-xs text-muted-foreground">{filtered.length} menu</p>
+
       <div className="space-y-2">
-        {items.map((item) => (
+        {filtered.map((item) => (
           <Card key={item.id}>
             <CardContent className="flex items-center gap-3 p-3">
-              <div className="flex-1">
-                <p className="font-medium">{item.name}</p>
+              <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-lg border bg-muted">
+                {item.imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={resolveImageUrl(item.imageUrl)}
+                    alt={item.name}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center">
+                    <ImageIcon className="h-5 w-5 text-muted-foreground/40" />
+                  </div>
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-medium truncate">{item.name}</p>
                 <p className="text-sm text-muted-foreground">
                   {item.category.name} · {formatCurrency(item.price)}
                 </p>
@@ -271,13 +211,135 @@ export default function AdminMenuPage() {
               <Button variant="ghost" size="icon" onClick={() => openEdit(item)}>
                 <Pencil className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="icon" onClick={() => handleDelete(item.id)}>
+              <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(item)}>
                 <Trash2 className="h-4 w-4 text-destructive" />
               </Button>
             </CardContent>
           </Card>
         ))}
       </div>
+
+      {/* Create/Edit Dialog */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editing ? "Edit Menu" : "Tambah Menu"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Nama</Label>
+              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="mt-1" />
+            </div>
+            <div>
+              <Label>Deskripsi</Label>
+              <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="mt-1" rows={2} />
+            </div>
+            <div>
+              <Label>Harga (Rp)</Label>
+              <Input type="number" value={form.price} onChange={(e) => setForm({ ...form, price: Number(e.target.value) })} className="mt-1" />
+            </div>
+            <div>
+              <Label>Kategori</Label>
+              <Select value={form.categoryId} onValueChange={(v) => setForm({ ...form, categoryId: v ?? "" })}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {categories.map((cat) => (
+                    <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Gambar Menu</Label>
+              <div className="mt-1 flex gap-2 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setImageMode("upload")}
+                  className={`rounded-md px-3 py-1 ${imageMode === "upload" ? "bg-primary text-primary-foreground" : "bg-muted"}`}
+                >
+                  Upload File
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setImageMode("url")}
+                  className={`rounded-md px-3 py-1 ${imageMode === "url" ? "bg-primary text-primary-foreground" : "bg-muted"}`}
+                >
+                  Pakai URL
+                </button>
+              </div>
+
+              {form.imageUrl && (
+                <div className="relative mt-2 h-32 w-32 overflow-hidden rounded-md border">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={resolveImageUrl(form.imageUrl)}
+                    alt="preview"
+                    className="h-full w-full object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, imageUrl: "" })}
+                    className="absolute right-1 top-1 rounded-full bg-black/60 p-1 text-white"
+                    aria-label="Hapus gambar"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              )}
+
+              {imageMode === "upload" ? (
+                <div className="mt-2">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) handleFile(f);
+                      e.target.value = "";
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="gap-2"
+                    disabled={uploading}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    {uploading ? (
+                      <><Loader2 className="h-4 w-4 animate-spin" /> Mengunggah...</>
+                    ) : form.imageUrl ? (
+                      <><ImageIcon className="h-4 w-4" /> Ganti Gambar</>
+                    ) : (
+                      <><Upload className="h-4 w-4" /> Pilih Gambar</>
+                    )}
+                  </Button>
+                  <p className="mt-1 text-xs text-muted-foreground">JPG/PNG/WEBP/GIF, maks 5MB</p>
+                </div>
+              ) : (
+                <Input
+                  value={form.imageUrl}
+                  onChange={(e) => setForm({ ...form, imageUrl: e.target.value })}
+                  className="mt-2"
+                  placeholder="https://..."
+                />
+              )}
+            </div>
+            <Button className="w-full" onClick={handleSubmit}>Simpan</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        title="Hapus Menu?"
+        description={`"${deleteTarget?.name}" akan dihapus permanen.`}
+        confirmLabel="Ya, Hapus"
+        variant="destructive"
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }

@@ -13,10 +13,17 @@ orderRoutes.get("/", async (c) => {
   const paymentStatus = c.req.query("paymentStatus");
   const date = c.req.query("date");
   const since = c.req.query("since");
+  const search = c.req.query("search");
 
   const where: Record<string, unknown> = {};
   if (status) where.orderStatus = status;
   if (paymentStatus) where.paymentStatus = paymentStatus;
+  if (search) {
+    where.OR = [
+      { orderNumber: { contains: search, mode: "insensitive" } },
+      { customerName: { contains: search, mode: "insensitive" } },
+    ];
+  }
   if (date) {
     const start = new Date(date);
     const end = new Date(date);

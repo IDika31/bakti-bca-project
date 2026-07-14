@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Loader2, CreditCard, User, Mail, ShoppingBag, Receipt, MapPin, StickyNote } from "lucide-react";
+import { ArrowLeft, Loader2, CreditCard, User, Mail, ShoppingBag, Receipt, MapPin, StickyNote, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,6 +26,7 @@ export default function CheckoutPage() {
   const [taxConfig, setTaxConfig] = useState<TaxConfig | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [redirecting, setRedirecting] = useState(false);
+  const [attempted, setAttempted] = useState(false);
 
   useEffect(() => {
     if (items.length === 0 && !redirecting) {
@@ -51,6 +52,7 @@ export default function CheckoutPage() {
   const totalBayar = totals.grandTotal + paymentFee;
 
   const handleSubmit = async () => {
+    setAttempted(true);
     if (!isDineIn && !customerName.trim()) {
       toast.error("Masukkan nama pemesan");
       return;
@@ -110,7 +112,7 @@ export default function CheckoutPage() {
       <div className="sticky top-0 z-10 border-b bg-background/90 backdrop-blur-lg">
         <div className="mx-auto flex max-w-5xl items-center gap-2 px-4 py-3 sm:px-6 md:px-8">
           <button
-            onClick={() => router.back()}
+            onClick={() => router.push("/cart")}
             aria-label="Kembali"
             className="flex h-10 w-10 items-center justify-center rounded-full transition-all hover:bg-muted active:scale-90"
           >
@@ -155,8 +157,14 @@ export default function CheckoutPage() {
                       value={customerName}
                       onChange={(e) => setCustomerName(e.target.value)}
                       placeholder="Nama untuk dipanggil"
-                      className="mt-2 rounded-xl"
+                      className={`mt-2 rounded-xl ${attempted && !customerName.trim() ? "border-red-500 ring-1 ring-red-500/20" : ""}`}
                     />
+                    {attempted && !customerName.trim() && (
+                      <p className="mt-1 flex items-center gap-1 text-xs text-red-500">
+                        <AlertCircle className="h-3 w-3" />
+                        Nama pemesan wajib diisi
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
@@ -189,7 +197,14 @@ export default function CheckoutPage() {
                 <Label className="text-sm font-semibold">Metode Pembayaran *</Label>
               </div>
               <div className="space-y-5">
-                {Object.entries(grouped).map(([group, methods]) => (
+                {Object.keys(grouped).length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-border/60 p-8 text-center">
+                    <CreditCard className="mx-auto h-8 w-8 text-muted-foreground/40" />
+                    <p className="mt-2 text-sm text-muted-foreground">Belum ada metode pembayaran aktif</p>
+                    <p className="text-xs text-muted-foreground">Hubungi admin untuk mengaktifkan pembayaran</p>
+                  </div>
+                ) : (
+                  Object.entries(grouped).map(([group, methods]) => (
                   <div key={group}>
                     <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                       {group}
@@ -239,12 +254,11 @@ export default function CheckoutPage() {
                       ))}
                     </div>
                   </div>
-                ))}
+                ))
+                )}
               </div>
             </section>
           </div>
-
-          {/* Summary column */}
           <div className="lg:sticky lg:top-20 lg:h-fit">
             {/* Order items */}
             <div className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm">
