@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { Plus } from "lucide-react";
+import { Plus, UtensilsCrossed } from "lucide-react";
 import { formatCurrency } from "@/lib/format";
 import { resolveImageUrl } from "@/lib/api";
 import type { MenuItem } from "@/types";
@@ -27,7 +27,7 @@ export function MenuCard({ item, onAdd }: MenuCardProps) {
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-primary/10 via-emerald-100 to-primary/20 dark:from-primary/20 dark:via-emerald-900/40 dark:to-primary/30">
-            <span className="text-5xl opacity-40">🍽️</span>
+            <UtensilsCrossed className="h-12 w-12 text-muted-foreground/30" />
           </div>
         )}
 

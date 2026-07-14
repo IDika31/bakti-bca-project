@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Upload, X, Loader2 } from "lucide-react";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Upload, X, Loader2, Eye, EyeOff, Copy, Wifi } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,9 +12,41 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { api, resolveImageUrl } from "@/lib/api";
 import { toast } from "sonner";
 import type { ApiResponse } from "@/types";
+
+function PasswordInput({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="relative mt-1">
+      <Input
+        type={show ? "text" : "password"}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="pr-10"
+      />
+      <button
+        type="button"
+        onClick={() => setShow((v) => !v)}
+        className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-foreground"
+        aria-label={show ? "Sembunyikan" : "Tampilkan"}
+      >
+        {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+      </button>
+    </div>
+  );
+}
 
 function ImageField({
   label,
@@ -148,11 +181,25 @@ interface TripaySettings {
 const DAY_NAMES = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 
 export default function AdminSettingsPage() {
+  return (
+    <Suspense fallback={<Skeleton className="h-96" />}>
+      <SettingsContent />
+    </Suspense>
+  );
+}
+
+function SettingsContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialTab = searchParams.get("tab") || "profile";
+
   const [profile, setProfile] = useState<Profile | null>(null);
   const [tax, setTax] = useState<TaxConfig | null>(null);
   const [hours, setHours] = useState<OperatingHour[]>([]);
   const [tripay, setTripay] = useState<TripaySettings | null>(null);
   const [loading, setLoading] = useState(true);
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [confirmProd, setConfirmProd] = useState(false);
 
   const token = typeof window !== "undefined" ? localStorage.getItem("admin-token") || "" : "";
 
@@ -167,8 +214,16 @@ export default function AdminSettingsPage() {
       setTax(t.data);
       setHours(h.data);
       setTripay(tr.data);
+    }).catch((err) => {
+      toast.error(err instanceof Error ? err.message : "Gagal memuat pengaturan");
     }).finally(() => setLoading(false));
   }, []);
+
+  const handleTabChange = (value: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", value);
+    router.replace(`/admin/settings?${params.toString()}`, { scroll: false });
+  };
 
   const saveProfile = async () => {
     if (!profile) return;
@@ -196,9 +251,43 @@ export default function AdminSettingsPage() {
     } catch (err) { toast.error(err instanceof Error ? err.message : "Gagal menyimpan"); }
   };
 
+  const copyToWeekdays = () => {
+    const monday = hours.find((h) => h.dayOfWeek === 1);
+    if (!monday) return;
+    setHours((prev) =>
+      prev.map((h) =>
+        h.dayOfWeek >= 1 && h.dayOfWeek <= 5
+          ? { ...h, openTime: monday.openTime, closeTime: monday.closeTime, isClosed: monday.isClosed }
+          : h
+      )
+    );
+    toast.success("Jam Senin disalin ke Selasa–Jumat");
+  };
+
+  const testTripayConnection = async () => {
+    if (!tripay) return;
+    setTestingConnection(true);
+    try {
+      await api.post("/api/admin/payments/sync", {}, { token });
+      toast.success("Koneksi Tripay berhasil!");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Koneksi Tripay gagal");
+    } finally {
+      setTestingConnection(false);
+    }
+  };
+
   const saveTripay = async () => {
     if (!tripay) return;
-    if (tripay.mode === "PRODUCTION" && !confirm("Mode PRODUCTION akan memproses pembayaran sungguhan. Lanjutkan?")) return;
+    if (tripay.mode === "PRODUCTION") {
+      setConfirmProd(true);
+      return;
+    }
+    await doSaveTripay();
+  };
+
+  const doSaveTripay = async () => {
+    if (!tripay) return;
     const { id, ...data } = tripay;
     try {
       await api.put("/api/admin/settings/tripay", data, { token });
@@ -214,7 +303,7 @@ export default function AdminSettingsPage() {
     <div className="space-y-4">
       <h2 className="text-lg font-bold">Pengaturan</h2>
 
-      <Tabs defaultValue="profile">
+      <Tabs value={initialTab} onValueChange={handleTabChange}>
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="profile">Profil</TabsTrigger>
           <TabsTrigger value="tax">Pajak</TabsTrigger>
@@ -314,7 +403,15 @@ export default function AdminSettingsPage() {
 
         <TabsContent value="hours">
           <Card>
-            <CardHeader><CardTitle className="text-base">Jam Operasional</CardTitle></CardHeader>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base">Jam Operasional</CardTitle>
+                <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={copyToWeekdays}>
+                  <Copy className="h-3.5 w-3.5" />
+                  Salin Senin ke Weekday
+                </Button>
+              </div>
+            </CardHeader>
             <CardContent className="space-y-3">
               {hours.map((h, i) => (
                 <div key={h.id} className="flex items-center gap-3">
@@ -385,11 +482,11 @@ export default function AdminSettingsPage() {
                     </div>
                     <div>
                       <Label>API Key</Label>
-                      <Input value={tripay.sandboxApiKey} onChange={(e) => setTripay({ ...tripay, sandboxApiKey: e.target.value })} className="mt-1" />
+                      <PasswordInput value={tripay.sandboxApiKey} onChange={(v) => setTripay({ ...tripay, sandboxApiKey: v })} />
                     </div>
                     <div>
                       <Label>Private Key</Label>
-                      <Input value={tripay.sandboxPrivateKey} onChange={(e) => setTripay({ ...tripay, sandboxPrivateKey: e.target.value })} className="mt-1" />
+                      <PasswordInput value={tripay.sandboxPrivateKey} onChange={(v) => setTripay({ ...tripay, sandboxPrivateKey: v })} />
                     </div>
                   </div>
 
@@ -401,21 +498,45 @@ export default function AdminSettingsPage() {
                     </div>
                     <div>
                       <Label>API Key</Label>
-                      <Input value={tripay.productionApiKey} onChange={(e) => setTripay({ ...tripay, productionApiKey: e.target.value })} className="mt-1" />
+                      <PasswordInput value={tripay.productionApiKey} onChange={(v) => setTripay({ ...tripay, productionApiKey: v })} />
                     </div>
                     <div>
                       <Label>Private Key</Label>
-                      <Input value={tripay.productionPrivateKey} onChange={(e) => setTripay({ ...tripay, productionPrivateKey: e.target.value })} className="mt-1" />
+                      <PasswordInput value={tripay.productionPrivateKey} onChange={(v) => setTripay({ ...tripay, productionPrivateKey: v })} />
                     </div>
                   </div>
 
-                  <Button onClick={saveTripay}>Simpan Konfigurasi Tripay</Button>
+                  <div className="flex gap-2">
+                    <Button onClick={saveTripay}>Simpan Konfigurasi Tripay</Button>
+                    <Button
+                      variant="outline"
+                      className="gap-1.5"
+                      onClick={testTripayConnection}
+                      disabled={testingConnection}
+                    >
+                      {testingConnection ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wifi className="h-4 w-4" />}
+                      Test Koneksi
+                    </Button>
+                  </div>
                 </>
               )}
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
+
+      <ConfirmDialog
+        open={confirmProd}
+        onOpenChange={setConfirmProd}
+        title="Aktifkan Mode Production?"
+        description="Mode PRODUCTION akan memproses pembayaran sungguhan dengan uang asli. Pastikan kredensial production sudah benar."
+        confirmLabel="Ya, Simpan Production"
+        variant="destructive"
+        onConfirm={() => {
+          setConfirmProd(false);
+          doSaveTripay();
+        }}
+      />
     </div>
   );
 }

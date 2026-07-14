@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Loader2, CreditCard, User, Mail } from "lucide-react";
+import { ArrowLeft, Loader2, CreditCard, User, Mail, ShoppingBag, Receipt, MapPin, StickyNote } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { CartSummary } from "@/components/customer/cart-summary";
+import { Separator } from "@/components/ui/separator";
 import { useCart } from "@/hooks/use-cart";
 import { useTable } from "@/hooks/use-table";
 import { api } from "@/lib/api";
@@ -39,7 +39,16 @@ export default function CheckoutPage() {
       setPaymentMethods(pmRes.data);
       setTaxConfig(taxRes.data);
     });
-  }, [items.length, router]);
+  }, [items.length, router, redirecting]);
+
+  const totals = useMemo(() => {
+    if (!taxConfig) return { subtotal: 0, serviceAmount: 0, taxAmount: 0, grandTotal: 0 };
+    return calculateTotal(taxConfig);
+  }, [taxConfig, calculateTotal]);
+
+  const selectedPm = paymentMethods.find((pm) => pm.code === selectedMethod);
+  const paymentFee = selectedPm?.feeCustomer ?? 0;
+  const totalBayar = totals.grandTotal + paymentFee;
 
   const handleSubmit = async () => {
     if (!isDineIn && !customerName.trim()) {
@@ -81,15 +90,9 @@ export default function CheckoutPage() {
       );
 
       setRedirecting(true);
-
-      const { orderId, transaction } = res.data;
-      if (transaction.checkoutUrl) {
-        clearCart();
-        window.location.href = transaction.checkoutUrl;
-      } else {
-        router.push(`/order/${orderId}`);
-        setTimeout(() => clearCart(), 100);
-      }
+      const { orderId } = res.data;
+      router.push(`/order/${orderId}`);
+      setTimeout(() => clearCart(), 100);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Gagal membuat pesanan");
       setSubmitting(false);
@@ -109,7 +112,7 @@ export default function CheckoutPage() {
           <button
             onClick={() => router.back()}
             aria-label="Kembali"
-            className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-muted"
+            className="flex h-10 w-10 items-center justify-center rounded-full transition-all hover:bg-muted active:scale-90"
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
@@ -118,7 +121,7 @@ export default function CheckoutPage() {
       </div>
 
       <div className="mx-auto max-w-5xl px-4 pt-5 sm:px-6 md:px-8">
-        <div className="grid gap-5 lg:grid-cols-[1fr_360px] lg:gap-8">
+        <div className="grid gap-5 lg:grid-cols-[1fr_400px] lg:gap-8">
           {/* Form column */}
           <div className="space-y-5">
             {/* Table / Name section */}
@@ -132,8 +135,8 @@ export default function CheckoutPage() {
               <div className="p-4 sm:p-5">
                 {isDineIn && table ? (
                   <div className="flex items-center gap-3">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-2xl">
-                      📍
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10">
+                      <MapPin className="h-6 w-6 text-primary" />
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">Meja</p>
@@ -196,7 +199,7 @@ export default function CheckoutPage() {
                         <button
                           key={pm.id}
                           onClick={() => setSelectedMethod(pm.code)}
-                          className={`group flex w-full items-center gap-3 rounded-2xl border p-3.5 text-left transition-all duration-200 ${
+                          className={`group flex w-full items-center gap-3 rounded-2xl border p-3.5 text-left transition-all duration-200 active:scale-[0.97] ${
                             selectedMethod === pm.code
                               ? "border-primary bg-primary/5 shadow-md ring-2 ring-primary/20"
                               : "border-border bg-card hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-sm"
@@ -243,16 +246,82 @@ export default function CheckoutPage() {
 
           {/* Summary column */}
           <div className="lg:sticky lg:top-20 lg:h-fit">
-            <CartSummary />
+            {/* Order items */}
+            <div className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm">
+              <div className="border-b border-dashed border-border/60 px-4 py-3 sm:px-5">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+                  <ShoppingBag className="h-4 w-4" />
+                  Pesanan ({items.length} item)
+                </h3>
+              </div>
+              <div className="max-h-60 space-y-0 overflow-y-auto px-4 py-3 sm:px-5">
+                {items.map((item) => (
+                  <div key={item.menuItemId} className="flex justify-between gap-2 py-1.5 text-sm">
+                    <div className="min-w-0 flex-1">
+                      <span className="font-medium">{item.quantity}x</span>{" "}
+                      <span>{item.name}</span>
+                      {item.notes && (
+                        <p className="text-xs text-muted-foreground"><StickyNote className="mr-1 inline h-3 w-3" />{item.notes}</p>
+                      )}
+                    </div>
+                    <span className="flex-shrink-0 tabular-nums text-muted-foreground">
+                      {formatCurrency(item.priceSnapshot * item.quantity)}
+                    </span>
+                  </div>
+                ))}
+              </div>
 
+              {/* Price breakdown */}
+              <div className="border-t border-dashed border-border/60 px-4 py-3 sm:px-5">
+                <div className="space-y-1.5 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Subtotal</span>
+                    <span className="font-medium tabular-nums">{formatCurrency(totals.subtotal)}</span>
+                  </div>
+                  {taxConfig?.serviceEnabled && totals.serviceAmount > 0 && (
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>{taxConfig.serviceLabel || "Service"} ({Number(taxConfig.servicePercentage)}%)</span>
+                      <span className="tabular-nums">{formatCurrency(totals.serviceAmount)}</span>
+                    </div>
+                  )}
+                  {taxConfig?.taxEnabled && totals.taxAmount > 0 && (
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>{taxConfig.taxLabel || "PB1"} ({Number(taxConfig.taxPercentage)}%)</span>
+                      <span className="tabular-nums">{formatCurrency(totals.taxAmount)}</span>
+                    </div>
+                  )}
+                  {paymentFee > 0 && (
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Biaya {selectedPm?.name}</span>
+                      <span className="tabular-nums">{formatCurrency(paymentFee)}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Grand total */}
+              <div className="bg-gradient-to-r from-primary/5 via-primary/10 to-primary/5 px-4 py-3.5 sm:px-5">
+                <div className="flex items-baseline justify-between">
+                  <span className="flex items-center gap-1.5 text-sm font-semibold">
+                    <Receipt className="h-4 w-4 text-primary" />
+                    Total Bayar
+                  </span>
+                  <span className="text-xl font-bold tabular-nums text-primary sm:text-2xl">
+                    {formatCurrency(totalBayar)}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Desktop button */}
             <Button
-              className="mt-4 hidden w-full rounded-xl text-base shadow-lg shadow-primary/25 lg:flex"
+              className="mt-4 hidden h-12 w-full rounded-xl text-base shadow-lg shadow-primary/25 transition-all active:scale-[0.97] lg:flex"
               size="lg"
               onClick={handleSubmit}
               disabled={submitting}
             >
               {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Bayar Sekarang
+              Bayar Sekarang — {formatCurrency(totalBayar)}
             </Button>
           </div>
         </div>
@@ -262,13 +331,13 @@ export default function CheckoutPage() {
       <div className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background/95 p-4 backdrop-blur-lg lg:hidden">
         <div className="mx-auto max-w-lg">
           <Button
-            className="w-full rounded-xl text-base shadow-lg shadow-primary/25"
+            className="h-12 w-full rounded-xl text-base shadow-lg shadow-primary/25 transition-all active:scale-[0.97]"
             size="lg"
             onClick={handleSubmit}
             disabled={submitting}
           >
             {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Bayar Sekarang
+            Bayar Sekarang — {formatCurrency(totalBayar)}
           </Button>
         </div>
       </div>

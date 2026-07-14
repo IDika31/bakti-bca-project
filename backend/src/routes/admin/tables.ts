@@ -71,7 +71,10 @@ tableRoutes.get("/:id/qr", async (c) => {
   const table = await prisma.table.findUnique({ where: { id } });
   if (!table) return error(c, "Meja tidak ditemukan", 404);
 
-  const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+  const frontendUrl = process.env.FRONTEND_URL
+    || (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : null)
+    || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
+    || "http://localhost:3000";
   const url = `${frontendUrl}/?t=${table.token}`;
   const qrDataUrl = await QRCode.toDataURL(url, { width: 400, margin: 2 });
 

@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { MapPin, Clock, Sparkles } from "lucide-react";
+import { MapPin, Clock, Sparkles, UtensilsCrossed } from "lucide-react";
 import { resolveImageUrl } from "@/lib/api";
 import type { RestaurantProfile } from "@/types";
 
@@ -45,8 +45,8 @@ export function RestaurantHeader({ profile }: { profile: RestaurantProfile | nul
                   />
                 </div>
               ) : (
-                <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-2xl border-2 border-white/40 bg-white/20 text-3xl shadow-2xl backdrop-blur-md sm:h-20 sm:w-20 sm:text-4xl md:h-24 md:w-24 md:text-5xl">
-                  🍽️
+                <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-2xl border-2 border-white/40 bg-white/20 shadow-2xl backdrop-blur-md sm:h-20 sm:w-20 md:h-24 md:w-24">
+                  <UtensilsCrossed className="h-8 w-8 text-white/70 sm:h-10 sm:w-10 md:h-12 md:w-12" />
                 </div>
               )}
               <div className="min-w-0 flex-1 pb-1">

@@ -2,10 +2,12 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { MapPin, UtensilsCrossed } from "lucide-react";
 import { api } from "@/lib/api";
 import { useCart } from "@/hooks/use-cart";
 import { useTable } from "@/hooks/use-table";
 import { useDebounce } from "@/hooks/use-debounce";
+import { toast } from "sonner";
 import { RestaurantHeader } from "@/components/customer/restaurant-header";
 import { CategoryTabs } from "@/components/customer/category-tabs";
 import { MenuSearch } from "@/components/customer/menu-search";
@@ -59,6 +61,7 @@ export default function MenuPage() {
       imageUrl: item.imageUrl,
       priceSnapshot: item.price,
     });
+    toast.success(`${item.name} ditambahkan ke keranjang`);
   };
 
   return (
@@ -69,8 +72,8 @@ export default function MenuPage() {
       {isDineIn && table && (
         <div className="mx-auto mt-4 max-w-6xl px-4 sm:px-6 md:px-8">
           <div className="flex items-center gap-3 rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent px-4 py-3 shadow-sm sm:px-5">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/15 text-lg">
-              📍
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/15">
+              <MapPin className="h-5 w-5 text-primary" />
             </div>
             <div className="flex-1">
               <p className="text-xs text-muted-foreground">Kamu sedang di</p>
@@ -120,8 +123,8 @@ export default function MenuPage() {
           </div>
         ) : menuItems.length === 0 ? (
           <div className="flex flex-col items-center gap-4 py-20 text-center">
-            <div className="flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-muted to-muted/40 text-5xl shadow-inner">
-              🍽️
+            <div className="flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-muted to-muted/40 shadow-inner">
+              <UtensilsCrossed className="h-10 w-10 text-muted-foreground/40" />
             </div>
             <div>
               <p className="text-lg font-semibold text-foreground">
