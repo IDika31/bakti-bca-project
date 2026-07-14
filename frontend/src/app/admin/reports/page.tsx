@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
+import { toast } from "sonner";
 import type { ApiResponse } from "@/types";
 
 interface DailyData {
@@ -224,7 +225,7 @@ export default function AdminReportsPage() {
       a.click();
       URL.revokeObjectURL(url);
     } catch {
-      alert("Gagal mengekspor laporan");
+      toast.error("Gagal mengekspor laporan");
     }
   };
 

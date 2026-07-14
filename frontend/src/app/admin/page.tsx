@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { formatCurrency, formatDate, ORDER_STATUS_LABELS } from "@/lib/format";
+import { toast } from "sonner";
 import type { ApiResponse } from "@/types";
 import Link from "next/link";
 
@@ -49,18 +50,25 @@ export default function AdminDashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const fetchData = useCallback(async () => {
     const token = localStorage.getItem("admin-token");
-    if (!token) {
+    if (!token) { setLoading(false); return; }
+    try {
+      const res = await api.get<ApiResponse<DashboardData>>("/api/admin/dashboard", { token });
+      setData(res.data);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Gagal memuat dashboard");
+    } finally {
       setLoading(false);
-      return;
     }
-    api
-      .get<ApiResponse<DashboardData>>("/api/admin/dashboard", { token })
-      .then((res) => setData(res.data))
-      .catch(() => {})
-      .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  useEffect(() => {
+    const interval = setInterval(fetchData, 30000);
+    return () => clearInterval(interval);
+  }, [fetchData]);
 
   if (loading) {
     return (
@@ -84,6 +92,7 @@ export default function AdminDashboardPage() {
       icon: DollarSign,
       color: "bg-emerald-500/10 text-emerald-600",
       ring: "ring-emerald-500/20",
+      href: "/admin/reports",
     },
     {
       label: "Pesanan Hari Ini",
@@ -91,6 +100,7 @@ export default function AdminDashboardPage() {
       icon: ShoppingBag,
       color: "bg-blue-500/10 text-blue-600",
       ring: "ring-blue-500/20",
+      href: "/admin/orders",
     },
     {
       label: "Sedang Diproses",
@@ -98,6 +108,7 @@ export default function AdminDashboardPage() {
       icon: Clock,
       color: "bg-amber-500/10 text-amber-600",
       ring: "ring-amber-500/20",
+      href: "/admin/orders",
     },
     {
       label: "Menu Aktif",
@@ -105,6 +116,7 @@ export default function AdminDashboardPage() {
       icon: UtensilsCrossed,
       color: "bg-purple-500/10 text-purple-600",
       ring: "ring-purple-500/20",
+      href: "/admin/menu",
     },
   ];
 
@@ -128,28 +140,27 @@ export default function AdminDashboardPage() {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat) => (
-          <Card
-            key={stat.label}
-            className="relative overflow-hidden rounded-2xl border-0 shadow-sm"
-          >
-            <CardContent className="p-5">
-              <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    {stat.label}
-                  </p>
-                  <p className="text-2xl font-bold tracking-tight">
-                    {stat.value}
-                  </p>
+          <Link key={stat.label} href={stat.href}>
+            <Card className="relative overflow-hidden rounded-2xl border-0 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
+              <CardContent className="p-5">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                      {stat.label}
+                    </p>
+                    <p className="text-2xl font-bold tracking-tight">
+                      {stat.value}
+                    </p>
+                  </div>
+                  <div
+                    className={`flex h-11 w-11 items-center justify-center rounded-xl ${stat.color} ring-1 ${stat.ring}`}
+                  >
+                    <stat.icon className="h-5 w-5" />
+                  </div>
                 </div>
-                <div
-                  className={`flex h-11 w-11 items-center justify-center rounded-xl ${stat.color} ring-1 ${stat.ring}`}
-                >
-                  <stat.icon className="h-5 w-5" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </Link>
         ))}
       </div>
 
@@ -180,9 +191,10 @@ export default function AdminDashboardPage() {
           ) : (
             <div className="divide-y">
               {data.recentOrders.map((order) => (
-                <div
+                <Link
                   key={order.id}
-                  className="flex items-center gap-3 py-3 first:pt-0 last:pb-0"
+                  href="/admin/orders"
+                  className="flex items-center gap-3 py-3 first:pt-0 last:pb-0 transition-colors hover:bg-muted/50 -mx-2 px-2 rounded-lg"
                 >
                   <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-muted text-xs font-bold text-muted-foreground">
                     {order._count.items}x
@@ -214,7 +226,7 @@ export default function AdminDashboardPage() {
                       {formatDate(order.createdAt)}
                     </p>
                   </div>
-                </div>
+                </Link>
               ))}
             </div>
           )}

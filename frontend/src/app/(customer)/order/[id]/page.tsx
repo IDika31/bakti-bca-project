@@ -54,7 +54,7 @@ export default function OrderStatusPage() {
 
     api.get<ApiResponse<PaymentInstruction[]>>(`/api/payment-instructions?${params.toString()}`)
       .then((r) => setInstructions(r.data || []))
-      .catch(() => {});
+      .catch(() => { /* payment instructions optional */ });
   }, [order?.transaction?.paymentMethod, order?.paymentStatus]);
 
   const copyToClipboard = (text: string) => {

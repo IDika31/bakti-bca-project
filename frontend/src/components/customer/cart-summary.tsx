@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { formatCurrency } from "@/lib/format";
 import { useCart } from "@/hooks/use-cart";
 import { api } from "@/lib/api";
+import { toast } from "sonner";
 import type { TaxConfig, ApiResponse } from "@/types";
 
 export function CartSummary() {
@@ -11,7 +12,7 @@ export function CartSummary() {
   const [config, setConfig] = useState<TaxConfig | null>(null);
 
   useEffect(() => {
-    api.get<ApiResponse<TaxConfig>>("/api/tax-config").then((res) => setConfig(res.data)).catch(() => {});
+    api.get<ApiResponse<TaxConfig>>("/api/tax-config").then((res) => setConfig(res.data)).catch((err) => toast.error(err instanceof Error ? err.message : "Gagal memuat konfigurasi"));
   }, []);
 
   const totals = config

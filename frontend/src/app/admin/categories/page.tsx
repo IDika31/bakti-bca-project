@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
+import { ConfirmDialog, useConfirmDialog } from "@/components/ui/confirm-dialog";
 import type { ApiResponse } from "@/types";
 
 interface CategoryAdmin {
@@ -25,6 +26,9 @@ export default function AdminCategoriesPage() {
   const [editing, setEditing] = useState<CategoryAdmin | null>(null);
   const [name, setName] = useState("");
   const [sortOrder, setSortOrder] = useState(0);
+
+  const deleteDialog = useConfirmDialog();
+  const [deletingCat, setDeletingCat] = useState<CategoryAdmin | null>(null);
 
   const token = typeof window !== "undefined" ? localStorage.getItem("admin-token") || "" : "";
 
@@ -70,7 +74,10 @@ export default function AdminCategoriesPage() {
       toast.error(`Tidak bisa hapus — masih ada ${cat._count.menuItems} menu`);
       return;
     }
-    if (!confirm("Hapus kategori ini?")) return;
+    setDeletingCat(cat);
+    const ok = await deleteDialog.confirm();
+    setDeletingCat(null);
+    if (!ok) return;
     try {
       await api.delete(`/api/admin/categories/${cat.id}`, { token });
       toast.success("Kategori dihapus");
@@ -126,6 +133,16 @@ export default function AdminCategoriesPage() {
           </Card>
         ))}
       </div>
+
+      <ConfirmDialog
+        open={deleteDialog.open}
+        onOpenChange={deleteDialog.setOpen}
+        title="Hapus Kategori"
+        description={`Yakin hapus kategori "${deletingCat?.name}"?`}
+        confirmLabel="Hapus"
+        variant="destructive"
+        onConfirm={deleteDialog.handleConfirm}
+      />
     </div>
   );
 }

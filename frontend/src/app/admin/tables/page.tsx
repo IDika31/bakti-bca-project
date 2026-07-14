@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
+import { ConfirmDialog, useConfirmDialog } from "@/components/ui/confirm-dialog";
 import type { ApiResponse } from "@/types";
 
 interface TableAdmin {
@@ -32,6 +33,9 @@ export default function AdminTablesPage() {
   const [qrDialog, setQrDialog] = useState<QrData | null>(null);
   const [form, setForm] = useState({ number: 1, name: "" });
 
+  const regenDialog = useConfirmDialog();
+  const [regenId, setRegenId] = useState<string | null>(null);
+
   const token = typeof window !== "undefined" ? localStorage.getItem("admin-token") || "" : "";
 
   const fetchData = async () => {
@@ -53,7 +57,10 @@ export default function AdminTablesPage() {
   };
 
   const handleRegenerate = async (id: string) => {
-    if (!confirm("Regenerate token? QR lama akan tidak berlaku dan harus dicetak ulang.")) return;
+    setRegenId(id);
+    const ok = await regenDialog.confirm();
+    setRegenId(null);
+    if (!ok) return;
     try {
       await api.post(`/api/admin/tables/${id}/regenerate`, {}, { token });
       toast.success("Token di-regenerate. Cetak ulang QR.");
@@ -138,6 +145,16 @@ export default function AdminTablesPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={regenDialog.open}
+        onOpenChange={regenDialog.setOpen}
+        title="Regenerate Token"
+        description="QR lama akan tidak berlaku dan harus dicetak ulang. Lanjutkan?"
+        confirmLabel="Regenerate"
+        variant="destructive"
+        onConfirm={regenDialog.handleConfirm}
+      />
     </div>
   );
 }
