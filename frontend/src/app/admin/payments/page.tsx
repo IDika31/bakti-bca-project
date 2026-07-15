@@ -7,6 +7,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import type { ApiResponse } from "@/types";
@@ -27,6 +32,22 @@ interface PaymentMethodAdmin {
   lastSyncedAt: string | null;
 }
 
+function relativeTime(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return "baru saja";
+  if (min < 60) return `${min} menit lalu`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr} jam lalu`;
+  const day = Math.floor(hr / 24);
+  if (day < 7) return `${day} hari lalu`;
+  return new Date(dateStr).toLocaleDateString("id-ID", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
 const GROUP_LABELS: Record<string, string> = {
   VIRTUAL_ACCOUNT: "Virtual Account",
   CONVENIENCE_STORE: "Convenience Store",
@@ -40,6 +61,14 @@ export default function AdminPaymentsPage() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [cashierEnabled, setCashierEnabled] = useState(false);
+
+  const lastSynced = methods.reduce<string | null>((latest, m) => {
+    if (!m.lastSyncedAt) return latest;
+    if (!latest || new Date(m.lastSyncedAt).getTime() > new Date(latest).getTime()) {
+      return m.lastSyncedAt;
+    }
+    return latest;
+  }, null);
 
   const token = typeof window !== "undefined" ? localStorage.getItem("admin-token") || "" : "";
 
@@ -97,7 +126,14 @@ export default function AdminPaymentsPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold">Metode Pembayaran</h2>
+        <div>
+          <h2 className="text-lg font-bold">Metode Pembayaran</h2>
+          {lastSynced && (
+            <p className="text-xs text-muted-foreground">
+              Terakhir disinkron {relativeTime(lastSynced)}
+            </p>
+          )}
+        </div>
         <Button onClick={handleSync} disabled={syncing} className="gap-2">
           <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
           Sinkronisasi Tripay
@@ -151,11 +187,28 @@ export default function AdminPaymentsPage() {
                   )}
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-muted-foreground">Tampilkan</span>
-                    <Switch
-                      checked={method.isShown}
-                      onCheckedChange={(checked) => toggleShown(method.id, checked)}
-                      disabled={!method.isActive}
-                    />
+                    {method.isActive ? (
+                      <Switch
+                        checked={method.isShown}
+                        onCheckedChange={(checked) => toggleShown(method.id, checked)}
+                      />
+                    ) : (
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={
+                            <span>
+                              <Switch
+                                checked={method.isShown}
+                                disabled
+                              />
+                            </span>
+                          }
+                        />
+                        <TooltipContent>
+                          Metode ini dinonaktifkan di Tripay dan tidak bisa diaktifkan sampai statusnya aktif kembali.
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
                   </div>
                 </CardContent>
               </Card>

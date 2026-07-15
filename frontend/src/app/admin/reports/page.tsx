@@ -9,6 +9,19 @@ import {
   CreditCard,
   CalendarDays,
 } from "lucide-react";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  CartesianGrid,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
+} from "recharts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -54,6 +67,34 @@ function getDefaultDates() {
   return { start, end };
 }
 
+function ymd(d: Date) {
+  return d.toISOString().split("T")[0];
+}
+
+type PresetKey = "today" | "7d" | "30d" | "month" | "lastMonth";
+
+function getPresetRange(key: PresetKey): { start: string; end: string } {
+  const now = new Date();
+  const end = ymd(now);
+  if (key === "today") return { start: end, end };
+  if (key === "7d") {
+    const s = new Date(now);
+    s.setDate(s.getDate() - 6);
+    return { start: ymd(s), end };
+  }
+  if (key === "30d") {
+    const s = new Date(now);
+    s.setDate(s.getDate() - 29);
+    return { start: ymd(s), end };
+  }
+  if (key === "month") {
+    return { start: ymd(new Date(now.getFullYear(), now.getMonth(), 1)), end };
+  }
+  const firstLast = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const lastLast = new Date(now.getFullYear(), now.getMonth(), 0);
+  return { start: ymd(firstLast), end: ymd(lastLast) };
+}
+
 function DailyChart({ data }: { data: DailyData[] }) {
   if (data.length === 0) {
     return (
@@ -64,45 +105,56 @@ function DailyChart({ data }: { data: DailyData[] }) {
     );
   }
 
-  const maxRevenue = Math.max(...data.map((d) => d.revenue), 1);
+  const chartData = data.map((d) => ({
+    ...d,
+    label: new Date(d.date).toLocaleDateString("id-ID", {
+      day: "numeric",
+      month: "short",
+    }),
+  }));
 
   return (
-    <div className="space-y-1.5">
-      {data.map((d) => {
-        const pct = Math.round((d.revenue / maxRevenue) * 100);
-        return (
-          <div key={d.date} className="group flex items-center gap-3">
-            <span className="w-14 flex-shrink-0 text-xs text-muted-foreground">
-              {new Date(d.date).toLocaleDateString("id-ID", {
-                day: "numeric",
-                month: "short",
-              })}
-            </span>
-            <div className="relative flex-1">
-              <div className="h-7 overflow-hidden rounded-md bg-muted/50">
-                <div
-                  className="flex h-full items-center rounded-md bg-primary/15 transition-all group-hover:bg-primary/25"
-                  style={{ width: `${Math.max(pct, 2)}%` }}
-                >
-                  <span className="truncate px-2 text-xs font-medium text-primary">
-                    {pct > 25 ? formatCurrency(d.revenue) : ""}
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div className="w-24 text-right">
-              {pct <= 25 && (
-                <span className="text-xs font-medium">
-                  {formatCurrency(d.revenue)}
-                </span>
-              )}
-              <span className="ml-1 text-[11px] text-muted-foreground">
-                ({d.orders})
-              </span>
-            </div>
-          </div>
-        );
-      })}
+    <div className="h-72 w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+          <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+          <XAxis
+            dataKey="label"
+            tick={{ fontSize: 11 }}
+            className="fill-muted-foreground"
+          />
+          <YAxis
+            tick={{ fontSize: 11 }}
+            className="fill-muted-foreground"
+            tickFormatter={(v) => {
+              if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}jt`;
+              if (v >= 1_000) return `${(v / 1_000).toFixed(0)}rb`;
+              return String(v);
+            }}
+          />
+          <Tooltip
+            contentStyle={{
+              borderRadius: 12,
+              border: "1px solid hsl(var(--border))",
+              background: "hsl(var(--background))",
+              fontSize: 12,
+            }}
+            formatter={(value, name) => {
+              const num = Number(value);
+              if (name === "revenue") return [formatCurrency(num), "Pendapatan"];
+              return [String(num), "Pesanan"];
+            }}
+          />
+          <Line
+            type="monotone"
+            dataKey="revenue"
+            stroke="hsl(var(--primary))"
+            strokeWidth={2}
+            dot={{ r: 3 }}
+            activeDot={{ r: 5 }}
+          />
+        </LineChart>
+      </ResponsiveContainer>
     </div>
   );
 }
@@ -117,6 +169,14 @@ function MethodBreakdown({ data, total }: { data: PaymentMethodSummary[]; total:
     );
   }
 
+  const CHART_COLORS = [
+    "hsl(var(--primary))",
+    "#10b981",
+    "#f59e0b",
+    "#3b82f6",
+    "#a855f7",
+    "#f43f5e",
+  ];
   const COLORS = [
     "bg-primary",
     "bg-emerald-500",
@@ -128,18 +188,38 @@ function MethodBreakdown({ data, total }: { data: PaymentMethodSummary[]; total:
 
   return (
     <div className="space-y-3">
-      <div className="flex h-3 overflow-hidden rounded-full bg-muted">
-        {data.map((pm, i) => {
-          const pct = total > 0 ? (pm.total / total) * 100 : 0;
-          return (
-            <div
-              key={pm.method}
-              className={`${COLORS[i % COLORS.length]} transition-all`}
-              style={{ width: `${pct}%` }}
-              title={`${pm.method}: ${Math.round(pct)}%`}
+      <div className="h-52 w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={data}
+              dataKey="total"
+              nameKey="method"
+              cx="50%"
+              cy="50%"
+              innerRadius={45}
+              outerRadius={75}
+              paddingAngle={2}
+            >
+              {data.map((_, i) => (
+                <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+              ))}
+            </Pie>
+            <Tooltip
+              contentStyle={{
+                borderRadius: 12,
+                border: "1px solid hsl(var(--border))",
+                background: "hsl(var(--background))",
+                fontSize: 12,
+              }}
+              formatter={(value) => formatCurrency(Number(value))}
             />
-          );
-        })}
+            <Legend
+              wrapperStyle={{ fontSize: 11 }}
+              formatter={(v) => <span className="text-muted-foreground">{v}</span>}
+            />
+          </PieChart>
+        </ResponsiveContainer>
       </div>
       <div className="space-y-2">
         {data.map((pm, i) => {
@@ -177,10 +257,13 @@ export default function AdminReportsPage() {
       ? localStorage.getItem("admin-token") || ""
       : "";
 
-  const fetchReport = async () => {
+  const fetchReport = async (fromOverride?: string, toOverride?: string) => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ from: startDate, to: endDate });
+      const params = new URLSearchParams({
+        from: fromOverride ?? startDate,
+        to: toOverride ?? endDate,
+      });
       const res = await api.get<ApiResponse<ReportData>>(
         `/api/admin/reports?${params}`,
         { token }
@@ -249,7 +332,34 @@ export default function AdminReportsPage() {
       </div>
 
       <Card className="rounded-2xl border-0 shadow-sm">
-        <CardContent className="flex flex-wrap items-end gap-4 p-4">
+        <CardContent className="space-y-3 p-4">
+          <div className="flex flex-wrap gap-2">
+            {(
+              [
+                ["today", "Hari Ini"],
+                ["7d", "7 Hari"],
+                ["30d", "30 Hari"],
+                ["month", "Bulan Ini"],
+                ["lastMonth", "Bulan Lalu"],
+              ] as [PresetKey, string][]
+            ).map(([key, label]) => (
+              <Button
+                key={key}
+                size="sm"
+                variant="outline"
+                className="h-8 rounded-full text-xs"
+                onClick={() => {
+                  const r = getPresetRange(key);
+                  setStartDate(r.start);
+                  setEndDate(r.end);
+                  fetchReport(r.start, r.end);
+                }}
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-end gap-4">
           <div>
             <Label className="text-xs text-muted-foreground">Dari Tanggal</Label>
             <Input
@@ -268,9 +378,10 @@ export default function AdminReportsPage() {
               className="mt-1 w-40 rounded-xl"
             />
           </div>
-          <Button onClick={fetchReport} className="rounded-xl">
+          <Button onClick={() => fetchReport()} className="rounded-xl">
             Tampilkan
           </Button>
+          </div>
         </CardContent>
       </Card>
 
