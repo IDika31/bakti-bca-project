@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { useCart } from "@/hooks/use-cart";
 import { useTable } from "@/hooks/use-table";
+import { useOperatingStatus } from "@/hooks/use-operating-status";
 import { api } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
 import { toast } from "sonner";
@@ -18,6 +19,7 @@ export default function CheckoutPage() {
   const router = useRouter();
   const { items, clearCart, calculateTotal } = useCart();
   const { table, isDineIn } = useTable();
+  const opStatus = useOperatingStatus();
 
   const [customerName, setCustomerName] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
@@ -53,6 +55,10 @@ export default function CheckoutPage() {
 
   const handleSubmit = async () => {
     setAttempted(true);
+    if (!opStatus.loading && !opStatus.isOpen) {
+      toast.error("Restoran sedang tutup. Pemesanan tidak bisa diproses.");
+      return;
+    }
     if (!isDineIn && !customerName.trim()) {
       toast.error("Masukkan nama pemesan");
       return;
@@ -332,10 +338,12 @@ export default function CheckoutPage() {
               className="mt-4 hidden h-12 w-full rounded-xl text-base shadow-lg shadow-primary/25 transition-all active:scale-[0.97] lg:flex"
               size="lg"
               onClick={handleSubmit}
-              disabled={submitting}
+              disabled={submitting || (!opStatus.loading && !opStatus.isOpen)}
             >
               {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Bayar Sekarang — {formatCurrency(totalBayar)}
+              {!opStatus.loading && !opStatus.isOpen
+                ? "Restoran Tutup"
+                : `Bayar Sekarang — ${formatCurrency(totalBayar)}`}
             </Button>
           </div>
         </div>
@@ -348,10 +356,12 @@ export default function CheckoutPage() {
             className="h-12 w-full rounded-xl text-base shadow-lg shadow-primary/25 transition-all active:scale-[0.97]"
             size="lg"
             onClick={handleSubmit}
-            disabled={submitting}
+            disabled={submitting || (!opStatus.loading && !opStatus.isOpen)}
           >
             {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Bayar Sekarang — {formatCurrency(totalBayar)}
+            {!opStatus.loading && !opStatus.isOpen
+              ? "Restoran Tutup"
+              : `Bayar Sekarang — ${formatCurrency(totalBayar)}`}
           </Button>
         </div>
       </div>

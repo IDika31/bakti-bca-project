@@ -6,6 +6,7 @@ import { ArrowLeft, CheckCircle2, Clock, ChefHat, Package, XCircle, Printer, Rot
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import DOMPurify from "isomorphic-dompurify";
 import { usePolling } from "@/hooks/use-polling";
 import { api } from "@/lib/api";
 import { formatCurrency, formatDate, ORDER_STATUS_LABELS, PAYMENT_STATUS_LABELS } from "@/lib/format";
@@ -77,8 +78,8 @@ export default function OrderStatusPage() {
   if (!order) {
     return (
       <div className="flex min-h-[70vh] flex-col items-center justify-center gap-4 px-4 text-center">
-        <div className="flex h-20 w-20 items-center justify-center rounded-full bg-muted text-4xl">
-          🔍
+        <div className="flex h-20 w-20 items-center justify-center rounded-full bg-muted text-muted-foreground">
+          <XCircle className="h-10 w-10" />
         </div>
         <p className="text-lg font-semibold">Pesanan tidak ditemukan</p>
         <p className="text-sm text-muted-foreground">Mungkin pesanan sudah kadaluarsa atau link salah</p>
@@ -136,6 +137,15 @@ export default function OrderStatusPage() {
                   </div>
                 </div>
               </div>
+
+              {order.orderStatus === "CANCELLED" && order.cancellationReason && (
+                <div className="border-t border-red-200/60 bg-white/60 px-5 py-4 sm:px-6">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-red-700/80">
+                    Alasan pembatalan
+                  </p>
+                  <p className="mt-1 text-sm text-red-900">{order.cancellationReason}</p>
+                </div>
+              )}
 
               {/* Step timeline */}
               {order.orderStatus !== "CANCELLED" && (
@@ -300,7 +310,15 @@ export default function OrderStatusPage() {
                                       <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-primary/15 text-[10px] font-bold text-primary">
                                         {si + 1}
                                       </span>
-                                      <p className="pt-0.5 text-sm text-muted-foreground" dangerouslySetInnerHTML={{ __html: step }} />
+                                      <p
+                                        className="pt-0.5 text-sm text-muted-foreground"
+                                        dangerouslySetInnerHTML={{
+                                          __html: DOMPurify.sanitize(step, {
+                                            ALLOWED_TAGS: ["b", "strong", "i", "em", "u", "br", "span", "code"],
+                                            ALLOWED_ATTR: ["class"],
+                                          }),
+                                        }}
+                                      />
                                     </div>
                                   ))}
                                 </div>
@@ -316,15 +334,43 @@ export default function OrderStatusPage() {
             )}
 
             {/* Paid success banner */}
-            {order.paymentStatus === "PAID" && (
-              <div className="flex items-center gap-3 rounded-2xl border-2 border-emerald-200 bg-gradient-to-r from-emerald-50 to-green-50 p-5 shadow-sm print:hidden">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-2xl">
-                  ✅
+            {order.paymentStatus === "PAID" && order.orderStatus !== "CANCELLED" && (
+              <div className="overflow-hidden rounded-2xl border-2 border-emerald-200 bg-gradient-to-br from-emerald-50 via-green-50/60 to-emerald-50/40 shadow-sm print:hidden">
+                <div className="flex items-center gap-4 px-5 py-4 sm:px-6">
+                  <div className="relative flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl bg-white shadow-lg">
+                    <CheckCircle2 className="h-8 w-8 text-emerald-600" />
+                    <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-600">
+                      <Check className="h-2.5 w-2.5 text-white" strokeWidth={4} />
+                    </span>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-lg font-bold text-emerald-900 sm:text-xl">Pembayaran Lunas</p>
+                    <p className="text-sm text-emerald-700">
+                      {order.orderStatus === "COMPLETED"
+                        ? "Pesanan sudah selesai. Terima kasih!"
+                        : order.orderStatus === "READY"
+                        ? "Pesanan siap diambil / diantar"
+                        : order.orderStatus === "PREPARING"
+                        ? "Pesanan sedang disiapkan dapur"
+                        : "Pesanan telah diteruskan ke dapur"}
+                    </p>
+                  </div>
+                  <div className="hidden text-right sm:block">
+                    <p className="text-xs uppercase tracking-wide text-emerald-700/70">Total Dibayar</p>
+                    <p className="text-lg font-bold text-emerald-900">{formatCurrency(order.grandTotal)}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="font-bold text-emerald-900">Pembayaran Berhasil</p>
-                  <p className="text-sm text-emerald-700">Pesanan kamu sedang diproses</p>
-                </div>
+                {order.transaction?.paymentMethod && (
+                  <div className="border-t border-emerald-200/60 bg-white/40 px-5 py-2.5 text-xs text-emerald-800 sm:px-6">
+                    Metode: <span className="font-semibold">{order.transaction.paymentMethod}</span>
+                    {order.transaction.reference && (
+                      <>
+                        <span className="mx-1.5 text-emerald-400">·</span>
+                        Ref: <span className="font-mono">{order.transaction.reference}</span>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 

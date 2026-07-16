@@ -145,11 +145,13 @@ model Order {
   taxPercent     Decimal?      @map("tax_percent")
   paymentStatus  PaymentStatus @default(UNPAID) @map("payment_status")
   orderStatus    OrderStatus   @default(PENDING) @map("order_status")
-  parentOrderId  String?       @map("parent_order_id")
-  parentOrder    Order?        @relation("OrderToOrder", fields: [parentOrderId], references: [id], onDelete: SetNull)
-  childOrders    Order[]       @relation("OrderToOrder")
-  items          OrderItem[]
-  transaction    Transaction?
+  parentOrderId      String?   @map("parent_order_id")
+  parentOrder        Order?    @relation("OrderToOrder", fields: [parentOrderId], references: [id], onDelete: SetNull)
+  childOrders        Order[]   @relation("OrderToOrder")
+  cancellationReason String?   @map("cancellation_reason")
+  cancelledAt        DateTime? @map("cancelled_at")
+  items              OrderItem[]
+  transaction        Transaction?
   createdAt      DateTime      @default(now()) @map("created_at")
   updatedAt      DateTime      @updatedAt @map("updated_at")
 

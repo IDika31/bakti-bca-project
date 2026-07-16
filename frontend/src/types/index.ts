@@ -65,6 +65,8 @@ export interface Order {
   paymentStatus: string;
   orderStatus: string;
   createdAt: string;
+  cancellationReason?: string | null;
+  cancelledAt?: string | null;
   table: { number: number; name: string | null } | null;
   items: OrderItem[];
   transaction: TransactionInfo | null;
@@ -93,6 +95,14 @@ export interface TransactionInfo {
 export interface PaymentInstruction {
   title: string;
   steps: string[];
+}
+
+export interface OperatingHours {
+  id: string;
+  dayOfWeek: number;
+  openTime: string;
+  closeTime: string;
+  isClosed: boolean;
 }
 
 export interface RestaurantProfile {

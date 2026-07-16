@@ -3,9 +3,11 @@
 import Image from "next/image";
 import { MapPin, Clock, Sparkles, UtensilsCrossed } from "lucide-react";
 import { resolveImageUrl } from "@/lib/api";
+import { useOperatingStatus } from "@/hooks/use-operating-status";
 import type { RestaurantProfile } from "@/types";
 
 export function RestaurantHeader({ profile }: { profile: RestaurantProfile | null }) {
+  const status = useOperatingStatus();
   return (
     <header className="relative w-full overflow-hidden">
       {/* Banner / Hero */}
@@ -74,16 +76,24 @@ export function RestaurantHeader({ profile }: { profile: RestaurantProfile | nul
                 <span className="line-clamp-1">{profile.address}</span>
               </span>
             )}
-            <span className="flex items-center gap-1.5">
-              <Clock className="h-3.5 w-3.5 text-primary" />
-              <span className="flex items-center gap-1">
-                <span className="relative flex h-1.5 w-1.5">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
-                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-green-500" />
+            {!status.loading && (
+              <span className="flex items-center gap-1.5">
+                <Clock className={`h-3.5 w-3.5 ${status.isOpen ? "text-primary" : "text-destructive"}`} />
+                <span className="flex items-center gap-1">
+                  <span className="relative flex h-1.5 w-1.5">
+                    {status.isOpen && (
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
+                    )}
+                    <span
+                      className={`relative inline-flex h-1.5 w-1.5 rounded-full ${
+                        status.isOpen ? "bg-green-500" : "bg-destructive"
+                      }`}
+                    />
+                  </span>
+                  {status.isOpen ? status.message : status.message || "Tutup"}
                 </span>
-                Buka Sekarang
               </span>
-            </span>
+            )}
           </div>
         </div>
       )}

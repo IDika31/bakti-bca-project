@@ -44,6 +44,19 @@ tableRoutes.put("/:id", async (c) => {
   return success(c, table);
 });
 
+tableRoutes.patch("/:id", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req.json();
+  if (typeof body.isActive !== "boolean") {
+    return error(c, "isActive harus boolean", 400);
+  }
+  const table = await prisma.table.update({
+    where: { id },
+    data: { isActive: body.isActive },
+  });
+  return success(c, table);
+});
+
 tableRoutes.delete("/:id", async (c) => {
   const id = c.req.param("id");
   await prisma.table.delete({ where: { id } });

@@ -7,30 +7,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Volume2, VolumeX, CheckCircle2, Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { AdminOrderDetail } from "@/components/admin/admin-order-detail";
+import { CheckCircle2, Search, ChevronLeft, ChevronRight, Eye } from "lucide-react";
 import { api } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 import { formatCurrency, ORDER_STATUS_LABELS, PAYMENT_STATUS_LABELS } from "@/lib/format";
 import { toast } from "sonner";
 import type { PaginatedResponse } from "@/types";
-
-function playNotificationSound() {
-  try {
-    const ctx = new AudioContext();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.type = "sine";
-    gain.gain.setValueAtTime(0.3, ctx.currentTime);
-    osc.frequency.setValueAtTime(880, ctx.currentTime);
-    osc.frequency.setValueAtTime(1174.66, ctx.currentTime + 0.15);
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.4);
-    osc.onended = () => ctx.close();
-  } catch {}
-}
 
 function relativeTime(dateStr: string): string {
   const now = Date.now();
@@ -66,8 +52,6 @@ const STATUS_COLORS: Record<string, string> = {
   CANCELLED: "bg-red-100 text-red-800",
 };
 
-const SOUND_KEY = "admin-sound-enabled";
-
 export default function AdminOrdersPage() {
   const [orders, setOrders] = useState<OrderAdmin[]>([]);
   const [loading, setLoading] = useState(true);
@@ -76,23 +60,13 @@ export default function AdminOrdersPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
-  const [soundEnabled, setSoundEnabled] = useState(() => {
-    if (typeof window === "undefined") return true;
-    return localStorage.getItem(SOUND_KEY) !== "false";
-  });
-  const knownOrderIds = useRef<Set<string>>(new Set());
-  const initialLoad = useRef(true);
+  const [cancelTarget, setCancelTarget] = useState<string | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelSubmitting, setCancelSubmitting] = useState(false);
+  const [detailId, setDetailId] = useState<string | null>(null);
   const searchTimeout = useRef<ReturnType<typeof setTimeout>>(null);
 
   const token = typeof window !== "undefined" ? localStorage.getItem("admin-token") || "" : "";
-
-  const toggleSound = () => {
-    setSoundEnabled((v) => {
-      const next = !v;
-      localStorage.setItem(SOUND_KEY, String(next));
-      return next;
-    });
-  };
 
   const fetchOrders = useCallback(async () => {
     const params = new URLSearchParams();
@@ -102,23 +76,11 @@ export default function AdminOrdersPage() {
     params.set("limit", "20");
     const res = await api.get<PaginatedResponse<OrderAdmin>>(`/api/admin/orders?${params}`, { token });
 
-    if (initialLoad.current) {
-      knownOrderIds.current = new Set(res.data.map((o) => o.id));
-      initialLoad.current = false;
-    } else if (!supabase) {
-      const newOrders = res.data.filter((o) => !knownOrderIds.current.has(o.id));
-      if (newOrders.length > 0 && soundEnabled) {
-        playNotificationSound();
-        toast.info(`${newOrders.length} pesanan baru masuk!`);
-      }
-      knownOrderIds.current = new Set(res.data.map((o) => o.id));
-    }
-
     setOrders(res.data);
     setTotalPages(res.meta.totalPages);
     setTotal(res.meta.total);
     setLoading(false);
-  }, [statusFilter, search, page, token, soundEnabled]);
+  }, [statusFilter, search, page, token]);
 
   useEffect(() => { fetchOrders(); }, [fetchOrders]);
 
@@ -129,22 +91,16 @@ export default function AdminOrdersPage() {
     }
 
     const channel = supabase
-      .channel("admin-orders")
+      .channel("admin-orders-page")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "orders" },
-        (payload) => {
-          if (payload.eventType === "INSERT" && soundEnabled) {
-            playNotificationSound();
-            toast.info("Pesanan baru masuk!");
-          }
-          fetchOrders();
-        }
+        () => fetchOrders()
       )
       .subscribe();
 
     return () => { supabase!.removeChannel(channel); };
-  }, [fetchOrders, soundEnabled]);
+  }, [fetchOrders]);
 
   const handleSearch = (value: string) => {
     setSearch(value);
@@ -158,6 +114,27 @@ export default function AdminOrdersPage() {
       fetchOrders();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Gagal update status");
+    }
+  };
+
+  const submitCancel = async () => {
+    if (!cancelTarget) return;
+    const reason = cancelReason.trim();
+    if (reason.length < 3) {
+      toast.error("Alasan minimal 3 karakter");
+      return;
+    }
+    setCancelSubmitting(true);
+    try {
+      await api.patch(`/api/admin/orders/${cancelTarget}/cancel`, { reason }, { token });
+      toast.success("Pesanan dibatalkan");
+      setCancelTarget(null);
+      setCancelReason("");
+      fetchOrders();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Gagal membatalkan");
+    } finally {
+      setCancelSubmitting(false);
     }
   };
 
@@ -185,14 +162,7 @@ export default function AdminOrdersPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold">Pesanan</h2>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={toggleSound}
-          title={soundEnabled ? "Matikan notifikasi suara" : "Nyalakan notifikasi suara"}
-        >
-          {soundEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4 text-muted-foreground" />}
-        </Button>
+        <span className="text-sm text-muted-foreground">{total} total</span>
       </div>
 
       <div className="flex flex-col gap-2 sm:flex-row">
@@ -233,11 +203,15 @@ export default function AdminOrdersPage() {
           <p className="text-xs text-muted-foreground">{total} pesanan ditemukan</p>
           <div className="space-y-3">
             {orders.map((order) => (
-              <Card key={order.id}>
+              <Card key={order.id} className="transition-shadow hover:shadow-md">
                 <CardContent className="p-4">
-                  <div className="flex items-start justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDetailId(order.id)}
+                    className="flex w-full items-start justify-between gap-2 text-left"
+                  >
                     <div>
-                      <p className="font-semibold">{order.orderNumber}</p>
+                      <p className="font-semibold group-hover:underline">{order.orderNumber}</p>
                       <p className="text-sm text-muted-foreground">
                         {order.table
                           ? order.table.name || `Meja ${order.table.number}`
@@ -257,11 +231,15 @@ export default function AdminOrdersPage() {
                         </Badge>
                       )}
                     </div>
-                  </div>
+                  </button>
 
-                  <div className="mt-2 text-xs text-muted-foreground">
+                  <button
+                    type="button"
+                    onClick={() => setDetailId(order.id)}
+                    className="mt-2 block w-full text-left text-xs text-muted-foreground hover:text-foreground"
+                  >
                     {order.items.map((item) => `${item.quantity}x ${item.menuItem.name}`).join(", ")}
-                  </div>
+                  </button>
 
                   {order.paymentStatus === "UNPAID" && !["COMPLETED", "CANCELLED"].includes(order.orderStatus) && (
                     <div className="mt-3 flex flex-wrap gap-2">
@@ -272,11 +250,18 @@ export default function AdminOrdersPage() {
                         <CheckCircle2 className="h-3.5 w-3.5" />
                         Lunas & Selesaikan
                       </Button>
-                      <Button size="sm" variant="destructive" onClick={() => updateStatus(order.id, "CANCELLED")}>
+                      <Button size="sm" variant="destructive" onClick={() => { setCancelTarget(order.id); setCancelReason(""); }}>
                         Batal
                       </Button>
                     </div>
                   )}
+
+                  <div className="mt-2">
+                    <Button size="sm" variant="ghost" className="h-7 gap-1 px-2 text-xs" onClick={() => setDetailId(order.id)}>
+                      <Eye className="h-3.5 w-3.5" />
+                      Lihat detail
+                    </Button>
+                  </div>
 
                   {order.paymentStatus === "PAID" && !["COMPLETED", "CANCELLED"].includes(order.orderStatus) && (
                     <div className="mt-3 flex flex-wrap gap-2">
@@ -301,7 +286,7 @@ export default function AdminOrdersPage() {
                           Selesaikan
                         </Button>
                       )}
-                      <Button size="sm" variant="destructive" onClick={() => updateStatus(order.id, "CANCELLED")}>
+                      <Button size="sm" variant="destructive" onClick={() => { setCancelTarget(order.id); setCancelReason(""); }}>
                         Batal
                       </Button>
                     </div>
@@ -336,6 +321,39 @@ export default function AdminOrdersPage() {
           )}
         </>
       )}
+
+      <AdminOrderDetail orderId={detailId} onClose={() => setDetailId(null)} token={token} />
+
+      <Dialog open={!!cancelTarget} onOpenChange={(o) => !o && setCancelTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Batalkan Pesanan</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Label htmlFor="cancel-reason">Alasan pembatalan</Label>
+            <Textarea
+              id="cancel-reason"
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              placeholder="Contoh: stok habis, dapur sudah tutup, dsb."
+              rows={3}
+              maxLength={500}
+              autoFocus
+            />
+            <p className="text-xs text-muted-foreground">
+              Alasan ini akan ditampilkan ke pelanggan pada halaman status pesanan.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setCancelTarget(null)}>
+                Batal
+              </Button>
+              <Button variant="destructive" onClick={submitCancel} disabled={cancelSubmitting}>
+                {cancelSubmitting ? "Membatalkan..." : "Batalkan Pesanan"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

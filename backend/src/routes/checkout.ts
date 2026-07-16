@@ -17,6 +17,28 @@ checkoutRoute.post("/checkout", async (c) => {
 
   const data = parsed.data;
 
+  // Guard: restaurant must be open
+  const now = new Date();
+  const todayHours = await prisma.operatingHours.findUnique({
+    where: { dayOfWeek: now.getDay() },
+  });
+  if (todayHours && !todayHours.isClosed) {
+    const [oh, om] = todayHours.openTime.split(":").map(Number);
+    const [ch, cm] = todayHours.closeTime.split(":").map(Number);
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    const openMin = (oh ?? 0) * 60 + (om ?? 0);
+    const closeMin = (ch ?? 0) * 60 + (cm ?? 0);
+    const overnight = closeMin <= openMin;
+    const isOpen = overnight
+      ? nowMin >= openMin || nowMin < closeMin
+      : nowMin >= openMin && nowMin < closeMin;
+    if (!isOpen) {
+      return error(c, "Restoran sedang tutup. Pemesanan tidak bisa diproses.", 400);
+    }
+  } else if (todayHours?.isClosed) {
+    return error(c, "Restoran tutup hari ini.", 400);
+  }
+
   // Validate table if dine-in
   let tableId: string | null = null;
   if (data.orderType === "DINE_IN") {

@@ -113,6 +113,35 @@ orderRoutes.patch("/:id/pay", async (c) => {
   return success(c, updated);
 });
 
+// PATCH /admin/orders/:id/cancel — cancel with reason
+orderRoutes.patch("/:id/cancel", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req.json().catch(() => ({}));
+  const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+  if (!reason || reason.length < 3) {
+    return error(c, "Alasan pembatalan wajib diisi (min 3 karakter)", 400);
+  }
+  if (reason.length > 500) {
+    return error(c, "Alasan pembatalan maks 500 karakter", 400);
+  }
+
+  const order = await prisma.order.findUnique({ where: { id } });
+  if (!order) return error(c, "Pesanan tidak ditemukan", 404);
+  if (order.orderStatus === "CANCELLED") return error(c, "Pesanan sudah dibatalkan", 400);
+  if (order.orderStatus === "COMPLETED") return error(c, "Pesanan sudah selesai, tidak bisa dibatalkan", 400);
+
+  const updated = await prisma.order.update({
+    where: { id },
+    data: {
+      orderStatus: "CANCELLED",
+      cancellationReason: reason,
+      cancelledAt: new Date(),
+    },
+  });
+
+  return success(c, updated);
+});
+
 // PATCH /admin/orders/:id/complete — mark as completed (+ paid if unpaid)
 orderRoutes.patch("/:id/complete", async (c) => {
   const id = c.req.param("id");

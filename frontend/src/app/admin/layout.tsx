@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/sonner";
+import { AdminNotifications, AdminNotificationsProvider, useAdminNotifications } from "@/components/admin/admin-notifications";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -23,13 +24,23 @@ const NAV_ITEMS = [
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  if (pathname === "/admin/login") return <>{children}</>;
+  return (
+    <AdminNotificationsProvider>
+      <AdminShell>{children}</AdminShell>
+    </AdminNotificationsProvider>
+  );
+}
+
+function AdminShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [user, setUser] = useState<{ name: string } | null>(null);
+  const { unreadCount } = useAdminNotifications();
 
   useEffect(() => {
-    if (pathname === "/admin/login") return;
     const token = localStorage.getItem("admin-token");
     const stored = localStorage.getItem("admin-user");
     if (!token) {
@@ -37,9 +48,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       return;
     }
     if (stored) setUser(JSON.parse(stored));
-  }, [pathname, router]);
-
-  if (pathname === "/admin/login") return <>{children}</>;
+  }, [router]);
 
   const handleLogout = () => {
     localStorage.removeItem("admin-token");
@@ -69,22 +78,31 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
 
         <nav className="space-y-1 p-3">
-          {NAV_ITEMS.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={() => setSidebarOpen(false)}
-              className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                pathname === item.href
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
-              )}
-            >
-              <item.icon className="h-4 w-4" />
-              {item.label}
-            </Link>
-          ))}
+          {NAV_ITEMS.map((item) => {
+            const isOrders = item.href === "/admin/orders";
+            const showBadge = isOrders && unreadCount > 0;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={() => setSidebarOpen(false)}
+                className={cn(
+                  "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                  pathname === item.href
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              >
+                <item.icon className="h-4 w-4" />
+                <span className="flex-1">{item.label}</span>
+                {showBadge && (
+                  <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
         </nav>
 
         <div className="absolute bottom-0 w-full border-t p-3">
@@ -105,6 +123,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <h2 className="font-semibold">
             {NAV_ITEMS.find((i) => i.href === pathname)?.label || "Admin"}
           </h2>
+          <div className="ml-auto">
+            <AdminNotifications />
+          </div>
         </header>
         <main className="p-4 lg:p-6">{children}</main>
       </div>

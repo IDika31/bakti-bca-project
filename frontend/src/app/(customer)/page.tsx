@@ -14,12 +14,14 @@ import { MenuSearch } from "@/components/customer/menu-search";
 import { MenuCard } from "@/components/customer/menu-card";
 import { CartFab } from "@/components/customer/cart-fab";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useOperatingStatus } from "@/hooks/use-operating-status";
 import type { MenuItem, Category, RestaurantProfile, ApiResponse } from "@/types";
 
 export default function MenuPage() {
   const router = useRouter();
   const { addItem } = useCart();
   const { table, isDineIn } = useTable();
+  const opStatus = useOperatingStatus();
 
   const [profile, setProfile] = useState<RestaurantProfile | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -55,6 +57,10 @@ export default function MenuPage() {
   }, [fetchMenu]);
 
   const handleAdd = (item: MenuItem) => {
+    if (!opStatus.loading && !opStatus.isOpen) {
+      toast.error("Restoran sedang tutup, tidak bisa memesan.");
+      return;
+    }
     addItem({
       menuItemId: item.id,
       name: item.name,
@@ -67,6 +73,15 @@ export default function MenuPage() {
   return (
     <div className="pb-28">
       <RestaurantHeader profile={profile} />
+
+      {!opStatus.loading && !opStatus.isOpen && (
+        <div className="mx-auto mt-4 max-w-6xl px-4 sm:px-6 md:px-8">
+          <div className="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive shadow-sm">
+            <p className="font-semibold">Restoran sedang tutup</p>
+            <p className="text-xs opacity-90">{opStatus.message}. Pemesanan akan dibuka kembali sesuai jam operasional.</p>
+          </div>
+        </div>
+      )}
 
       {/* Table indicator */}
       {isDineIn && table && (
