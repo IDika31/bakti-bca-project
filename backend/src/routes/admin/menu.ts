@@ -3,8 +3,10 @@ import { prisma } from "../../lib/prisma.js";
 import { success, error, paginated } from "../../lib/response.js";
 import { menuItemSchema } from "../../lib/validators.js";
 import { deleteImageIfUnused } from "../../lib/storage-cleanup.js";
+import { requireRole } from "../../lib/auth.js";
 
 const menuRoutes = new Hono();
+menuRoutes.use("*", requireRole("OWNER", "ADMIN"));
 
 // GET /admin/menu?page=1&limit=50&category=ID&search=TERM
 menuRoutes.get("/", async (c) => {
