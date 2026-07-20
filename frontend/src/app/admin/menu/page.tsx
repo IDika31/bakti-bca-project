@@ -121,7 +121,8 @@ export default function AdminMenuPage() {
         description: form.description || undefined,
         price: form.price,
         categoryId: form.categoryId,
-        imageUrl: form.imageUrl || undefined,
+        // Send "" to clear the image; backend normalizes to null + deletes file.
+        imageUrl: form.imageUrl,
       };
 
       if (editing) {

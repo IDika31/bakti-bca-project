@@ -11,12 +11,13 @@ export const categorySchema = z.object({
 });
 
 const imageUrlSchema = z
-  .string()
-  .refine((v) => /^https?:\/\//.test(v) || v.startsWith("/uploads/"), {
-    message: "Harus URL http(s) atau path /uploads/...",
-  })
-  .optional()
-  .nullable();
+  .union([
+    z.string().refine((v) => v === "" || /^https?:\/\//.test(v) || v.startsWith("/uploads/"), {
+      message: "Harus URL http(s) atau path /uploads/...",
+    }),
+    z.null(),
+  ])
+  .optional();
 
 export const menuItemSchema = z.object({
   name: z.string().min(1).max(200),
