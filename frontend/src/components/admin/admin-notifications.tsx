@@ -10,21 +10,43 @@ import { toast } from "sonner";
 const SOUND_KEY = "admin-sound-enabled";
 const BROWSER_KEY = "admin-browser-notif";
 
+// Loud, persistent alert: three rising two-tone beeps at full gain so it
+// cuts through a noisy kitchen. Each beep ~0.5s with a gap, total ~3.5s.
 function playNotificationSound() {
   try {
     const ctx = new AudioContext();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.type = "sine";
-    gain.gain.setValueAtTime(0.3, ctx.currentTime);
-    osc.frequency.setValueAtTime(880, ctx.currentTime);
-    osc.frequency.setValueAtTime(1174.66, ctx.currentTime + 0.15);
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.4);
-    osc.onended = () => ctx.close();
+    // Resume in case the context was created suspended (autoplay policy).
+    if (ctx.state === "suspended") void ctx.resume();
+
+    const master = ctx.createGain();
+    master.gain.value = 1.0; // max gain — loud
+    master.connect(ctx.destination);
+
+    const beep = (startAt: number, freqA: number, freqB: number) => {
+      const osc = ctx.createOscillator();
+      const env = ctx.createGain();
+      osc.connect(env);
+      env.connect(master);
+      osc.type = "square"; // brighter, harsher — easier to hear over noise
+      osc.frequency.setValueAtTime(freqA, startAt);
+      osc.frequency.setValueAtTime(freqB, startAt + 0.12);
+      // Sharp attack, slight decay, hold, then quick release per beep.
+      env.gain.setValueAtTime(0.0001, startAt);
+      env.gain.exponentialRampToValueAtTime(1.0, startAt + 0.02);
+      env.gain.setValueAtTime(1.0, startAt + 0.38);
+      env.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.5);
+      osc.start(startAt);
+      osc.stop(startAt + 0.52);
+    };
+
+    const t = ctx.currentTime;
+    beep(t, 880, 1174.66);          // beep 1
+    beep(t + 0.7, 880, 1174.66);    // beep 2
+    beep(t + 1.4, 988, 1318.51);    // beep 3 (higher, more urgent)
+
+    // Close the AudioContext after the last beep finishes.
+    const totalMs = (1.4 + 0.52) * 1000 + 200;
+    window.setTimeout(() => { void ctx.close(); }, totalMs);
   } catch {}
 }
 
