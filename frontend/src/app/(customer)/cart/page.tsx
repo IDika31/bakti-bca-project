@@ -69,7 +69,7 @@ export default function CartPage() {
         <div className="grid gap-4 lg:grid-cols-[1fr_360px] lg:gap-8">
           <div className="space-y-3">
             {items.map((item) => (
-              <CartItem key={item.menuItemId} item={item} />
+              <CartItem key={item.lineId} item={item} />
             ))}
           </div>
 

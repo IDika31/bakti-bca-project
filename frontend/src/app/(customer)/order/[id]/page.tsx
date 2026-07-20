@@ -408,12 +408,20 @@ export default function OrderStatusPage() {
                 <Separator className="my-4" />
 
                 <div className="space-y-3">
-                  {order.items.map((item) => (
+                  {order.items.map((item) => {
+                    const addonTotal = (item.addons ?? []).reduce((s, a) => s + a.priceSnapshot * a.quantity, 0);
+                    const unit = item.priceSnapshot + addonTotal;
+                    return (
                     <div key={item.id} className="flex justify-between gap-3 text-sm">
                       <div className="min-w-0 flex-1">
                         <span className="font-medium">
                           {item.quantity}x {item.menuItem.name}
                         </span>
+                        {item.addons && item.addons.length > 0 && (
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {item.addons.map((a) => `+ ${a.name} (${formatCurrency(a.priceSnapshot)})`).join(", ")}
+                          </p>
+                        )}
                         {item.notes && (
                           <p className="mt-0.5 text-xs text-muted-foreground">
                             <StickyNote className="mr-1 inline h-3 w-3" />{item.notes}
@@ -421,10 +429,11 @@ export default function OrderStatusPage() {
                         )}
                       </div>
                       <span className="whitespace-nowrap font-medium tabular-nums">
-                        {formatCurrency(item.priceSnapshot * item.quantity)}
+                        {formatCurrency(unit * item.quantity)}
                       </span>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 <Separator className="my-4" />

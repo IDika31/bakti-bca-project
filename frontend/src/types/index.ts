@@ -1,3 +1,10 @@
+export interface Addon {
+  id: string;
+  name: string;
+  price: number;
+  sortOrder: number;
+}
+
 export interface MenuItem {
   id: string;
   name: string;
@@ -6,7 +13,8 @@ export interface MenuItem {
   imageUrl: string | null;
   isAvailable: boolean;
   categoryId: string;
-  category: { id: string; name: string };
+  category: { id: string; name: string; addons: Addon[] };
+  addons: Addon[];
 }
 
 export interface Category {
@@ -15,13 +23,21 @@ export interface Category {
   sortOrder: number;
 }
 
+export interface CartItemAddon {
+  addonId: string;
+  name: string;
+  price: number;
+}
+
 export interface CartItem {
+  lineId: string;
   menuItemId: string;
   name: string;
   imageUrl: string | null;
   priceSnapshot: number;
   quantity: number;
   notes: string;
+  addons: CartItemAddon[];
 }
 
 export interface TableInfo {
@@ -72,12 +88,20 @@ export interface Order {
   transaction: TransactionInfo | null;
 }
 
+export interface OrderItemAddon {
+  id: string;
+  name: string;
+  priceSnapshot: number;
+  quantity: number;
+}
+
 export interface OrderItem {
   id: string;
   quantity: number;
   priceSnapshot: number;
   notes: string | null;
   menuItem: { name: string; imageUrl: string | null };
+  addons?: OrderItemAddon[];
 }
 
 export interface TransactionInfo {

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import {
-  LayoutDashboard, UtensilsCrossed, FolderOpen, ShoppingBag,
+  LayoutDashboard, UtensilsCrossed, FolderOpen, ShoppingBag, Tags,
   CreditCard, Table2, Settings, BarChart3, LogOut, Menu, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ const NAV_ITEMS = [
   { href: "/admin/orders", label: "Pesanan", icon: ShoppingBag },
   { href: "/admin/menu", label: "Menu", icon: UtensilsCrossed },
   { href: "/admin/categories", label: "Kategori", icon: FolderOpen },
+  { href: "/admin/addons", label: "Addon", icon: Tags },
   { href: "/admin/tables", label: "Meja & QR", icon: Table2 },
   { href: "/admin/payments", label: "Pembayaran", icon: CreditCard },
   { href: "/admin/reports", label: "Laporan", icon: BarChart3 },

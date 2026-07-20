@@ -62,7 +62,16 @@ orderRoutes.get("/:id", async (c) => {
     where: { id },
     include: {
       items: {
-        include: { menuItem: { select: { name: true, imageUrl: true, description: true } } },
+        select: {
+          id: true,
+          quantity: true,
+          notes: true,
+          priceSnapshot: true,
+          menuItem: { select: { name: true, imageUrl: true, description: true } },
+          addons: {
+            select: { id: true, name: true, priceSnapshot: true, quantity: true },
+          },
+        },
       },
       table: { select: { number: true, name: true } },
       transaction: true,
@@ -73,7 +82,16 @@ orderRoutes.get("/:id", async (c) => {
   });
 
   if (!order) return error(c, "Pesanan tidak ditemukan", 404);
-  return success(c, order);
+  // Schema guarantees priceSnapshot Int non-null; remap to `price` for client.
+  const items = order.items.map((it) => ({
+    id: it.id,
+    quantity: it.quantity,
+    notes: it.notes,
+    price: it.priceSnapshot,
+    menuItem: it.menuItem,
+    addons: it.addons,
+  }));
+  return success(c, { ...order, items });
 });
 
 // PATCH /admin/orders/:id

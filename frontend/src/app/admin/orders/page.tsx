@@ -18,15 +18,45 @@ import { formatCurrency, ORDER_STATUS_LABELS, PAYMENT_STATUS_LABELS } from "@/li
 import { toast } from "sonner";
 import type { PaginatedResponse } from "@/types";
 
-function relativeTime(dateStr: string): string {
-  const now = Date.now();
+function ClientTime({ iso, locale = "id-ID" }: { iso: string; locale?: string }) {
+  // Render a stable placeholder on SSR + first client render to avoid hydration mismatch.
+  const d = new Date(iso);
+  const isoAttr = Number.isNaN(d.getTime()) ? "" : d.toISOString();
+  const fallback = isoAttr ? isoAttr.replace("T", " ").slice(0, 16) : "";
+  return <ClientTimeInner iso={iso} fallback={fallback} locale={locale} />;
+}
+
+function ClientTimeInner({ iso, fallback, locale }: { iso: string; fallback: string; locale: string }) {
+  const [text, setText] = useState<string>(fallback);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setText(formatLocal(new Date(iso), locale));
+    setMounted(true);
+  }, [iso, locale]);
+  return <span suppressHydrationWarning title={mounted ? text : fallback}>{text}</span>;
+}
+
+function formatLocal(d: Date, locale: string) {
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString(locale, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function relativeTime(dateStr: string, nowTs: number): string {
   const then = new Date(dateStr).getTime();
-  const diff = Math.floor((now - then) / 1000);
+  if (Number.isNaN(then)) return "";
+  const diff = Math.floor((nowTs - then) / 1000);
   if (diff < 60) return "baru saja";
   if (diff < 3600) return `${Math.floor(diff / 60)} menit lalu`;
   if (diff < 86400) return `${Math.floor(diff / 3600)} jam lalu`;
   if (diff < 604800) return `${Math.floor(diff / 86400)} hari lalu`;
-  return new Date(dateStr).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
+  const abs = Math.abs(then - nowTs);
+  return formatLocal(new Date(then), "id-ID");
 }
 
 interface OrderAdmin {
@@ -64,6 +94,12 @@ export default function AdminOrdersPage() {
   const [cancelReason, setCancelReason] = useState("");
   const [cancelSubmitting, setCancelSubmitting] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [nowTs, setNowTs] = useState<number | null>(null);
+  useEffect(() => {
+    setNowTs(Date.now());
+    const id = window.setInterval(() => setNowTs(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
   const searchTimeout = useRef<ReturnType<typeof setTimeout>>(null);
 
   const token = typeof window !== "undefined" ? localStorage.getItem("admin-token") || "" : "";
@@ -75,10 +111,12 @@ export default function AdminOrdersPage() {
     params.set("page", String(page));
     params.set("limit", "20");
     const res = await api.get<PaginatedResponse<OrderAdmin>>(`/api/admin/orders?${params}`, { token });
+    const list = Array.isArray(res?.data) ? res.data : [];
+    const meta = res?.meta ?? { total: 0, page: 1, limit: 20, totalPages: 1 };
 
-    setOrders(res.data);
-    setTotalPages(res.meta.totalPages);
-    setTotal(res.meta.total);
+    setOrders(list);
+    setTotalPages(meta.totalPages ?? 1);
+    setTotal(meta.total ?? 0);
     setLoading(false);
   }, [statusFilter, search, page, token]);
 
@@ -217,7 +255,10 @@ export default function AdminOrdersPage() {
                           ? order.table.name || `Meja ${order.table.number}`
                           : order.customerName || "Take Away"}
                         {" · "}
-                        <span title={new Date(order.createdAt).toLocaleString("id-ID")}>{relativeTime(order.createdAt)}</span>
+                        <ClientTime iso={order.createdAt} />
+                        {nowTs !== null && (
+                          <span className="ml-1 text-xs">({relativeTime(order.createdAt, nowTs)})</span>
+                        )}
                       </p>
                     </div>
                     <div className="text-right">

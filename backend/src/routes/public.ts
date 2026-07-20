@@ -35,7 +35,24 @@ publicRoutes.get("/menu", async (c) => {
 
   const items = await prisma.menuItem.findMany({
     where,
-    include: { category: { select: { id: true, name: true } } },
+    include: {
+      category: {
+        select: {
+          id: true,
+          name: true,
+          addons: {
+            where: { isActive: true },
+            select: { id: true, name: true, price: true, sortOrder: true },
+            orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+          },
+        },
+      },
+      addons: {
+        where: { isActive: true },
+        select: { id: true, name: true, price: true, sortOrder: true },
+        orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      },
+    },
     orderBy: { name: "asc" },
   });
 
@@ -92,6 +109,7 @@ publicRoutes.get("/orders/:id", async (c) => {
       items: {
         include: {
           menuItem: { select: { name: true, imageUrl: true } },
+          addons: true,
         },
       },
       table: { select: { number: true, name: true } },

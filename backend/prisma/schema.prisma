@@ -86,6 +86,7 @@ model Category {
   createdAt DateTime   @default(now()) @map("created_at")
   updatedAt DateTime   @updatedAt @map("updated_at")
   menuItems MenuItem[]
+  addons    Addon[]
 
   @@map("categories")
 }
@@ -104,10 +105,35 @@ model MenuItem {
   createdAt   DateTime    @default(now()) @map("created_at")
   updatedAt   DateTime    @updatedAt @map("updated_at")
   orderItems  OrderItem[]
+  addons      Addon[]
 
   @@index([categoryId])
   @@index([isAvailable])
   @@map("menu_items")
+}
+
+// ─── Addon (menu-specific or category-wide) ──────────────────────────
+// If menuItemId is set the addon applies to a single menu item.
+// If categoryId is set the addon applies to all menu items in that category.
+// Exactly one of the two must be set.
+
+model Addon {
+  id          String    @id @default(uuid())
+  name        String
+  price       Int // Rupiah
+  isActive    Boolean   @default(true) @map("is_active")
+  sortOrder   Int       @default(0) @map("sort_order")
+  menuItemId  String?   @map("menu_item_id")
+  menuItem    MenuItem? @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  categoryId  String?   @map("category_id")
+  category    Category? @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  orderItemAddons OrderItemAddon[]
+
+  @@index([menuItemId])
+  @@index([categoryId])
+  @@map("addons")
 }
 
 // ─── Table (Meja) ───────────────────────────────────────────────────
@@ -189,18 +215,37 @@ enum OrderStatus {
 // ─── Order Item ─────────────────────────────────────────────────────
 
 model OrderItem {
-  id            String   @id @default(uuid())
-  orderId       String   @map("order_id")
-  order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  menuItemId    String   @map("menu_item_id")
-  menuItem      MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Restrict)
+  id            String          @id @default(uuid())
+  orderId       String          @map("order_id")
+  order         Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItemId    String          @map("menu_item_id")
+  menuItem      MenuItem        @relation(fields: [menuItemId], references: [id], onDelete: Restrict)
   quantity      Int
-  priceSnapshot Int      @map("price_snapshot")
+  priceSnapshot Int             @map("price_snapshot")
   notes         String?
-  createdAt     DateTime @default(now()) @map("created_at")
+  createdAt     DateTime        @default(now()) @map("created_at")
+  addons        OrderItemAddon[]
 
   @@index([orderId])
   @@map("order_items")
+}
+
+// ─── Order Item Addon (snapshot of selected addon per order line) ────
+
+model OrderItemAddon {
+  id            String    @id @default(uuid())
+  orderItemId   String    @map("order_item_id")
+  orderItem     OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  addonId       String    @map("addon_id")
+  addon         Addon     @relation(fields: [addonId], references: [id], onDelete: Restrict)
+  name          String // snapshot of addon name at order time
+  priceSnapshot Int       @map("price_snapshot") // snapshot of addon price
+  quantity      Int       @default(1) // same as parent order item quantity
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  @@index([orderItemId])
+  @@index([addonId])
+  @@map("order_item_addons")
 }
 
 // ─── Payment Method (synced from Tripay) ────────────────────────────

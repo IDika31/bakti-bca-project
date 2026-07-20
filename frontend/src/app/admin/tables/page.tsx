@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, QrCode, RefreshCw, Pencil, Download, Printer } from "lucide-react";
+import { Plus, QrCode, RefreshCw, Pencil, Download, Printer, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,19 @@ import { api } from "@/lib/api";
 import { toast } from "sonner";
 import { ConfirmDialog, useConfirmDialog } from "@/components/ui/confirm-dialog";
 import type { ApiResponse } from "@/types";
+
+// HTML entity map for safe interpolation into the print HTML. We use
+// fromCharCode so the source stays pure ASCII and avoids any tool mangling.
+const HTML_ENTITIES: Record<string, string> = {
+  "&": String.fromCharCode(38),
+  "<": String.fromCharCode(60),
+  ">": String.fromCharCode(62),
+  "\"": String.fromCharCode(34),
+  "'": String.fromCharCode(39),
+};
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => HTML_ENTITIES[c] ?? c);
+}
 
 interface TableAdmin {
   id: string;
@@ -37,16 +50,6 @@ interface RestaurantProfile {
 
 type FormState = { number: number; name: string };
 
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;",
-  }[c] as string));
-}
-
 export default function AdminTablesPage() {
   const [tables, setTables] = useState<TableAdmin[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -54,24 +57,26 @@ export default function AdminTablesPage() {
   const [editing, setEditing] = useState<TableAdmin | null>(null);
   const [form, setForm] = useState<FormState>({ number: 1, name: "" });
   const [profile, setProfile] = useState<RestaurantProfile | null>(null);
+  const [printingAll, setPrintingAll] = useState<"A4" | "A6" | null>(null);
 
   const regenDialog = useConfirmDialog();
   const [regenId, setRegenId] = useState<string | null>(null);
 
   const token = typeof window !== "undefined" ? localStorage.getItem("admin-token") || "" : "";
 
+  // api.get returns the raw { success, data } envelope, so read .data.
   const fetchData = async () => {
     const res = await api.get<ApiResponse<TableAdmin[]>>("/api/admin/tables", { token });
-    setTables(res.data);
+    setTables(Array.isArray(res?.data) ? res.data : []);
   };
 
   useEffect(() => { fetchData(); }, []);
 
   useEffect(() => {
-    api.get<ApiResponse<RestaurantProfile>>("/api/restaurant")
-      .then((r) => setProfile(r.data))
+    api.get<ApiResponse<RestaurantProfile>>("/api/restaurant", { token })
+      .then((r) => setProfile(r?.data ?? null))
       .catch(() => setProfile(null));
-  }, []);
+  }, [token]);
 
   const openCreate = () => {
     const nextNumber = tables.length
@@ -140,65 +145,48 @@ export default function AdminTablesPage() {
   const showQr = async (id: string) => {
     try {
       const res = await api.get<ApiResponse<QrData>>(`/api/admin/tables/${id}/qr`, { token });
-      setQrDialog(res.data);
+      setQrDialog(res?.data ?? null);
     } catch {
       toast.error("Gagal generate QR");
     }
   };
 
-  const printQr = (size: "A4" | "A6") => {
-    if (!qrDialog) return;
-    const w = window.open("", "_blank", "width=800,height=1000");
-    if (!w) {
-      toast.error("Popup diblokir. Izinkan popup untuk mencetak.");
-      return;
-    }
-    const label = qrDialog.tableName || `Meja ${qrDialog.tableNumber}`;
+  // Fetch QR data for every existing table (used by the Print All buttons).
+  const fetchAllQrs = async (): Promise<QrData[]> => {
+    const results = await Promise.all(
+      tables.map((t) =>
+        api
+          .get<ApiResponse<QrData>>(`/api/admin/tables/${t.id}/qr`, { token })
+          .then((r) => r?.data ?? null)
+          .catch(() => null)
+      )
+    );
+    return results.filter((r): r is QrData => r !== null && !!r.qrDataUrl);
+  };
+
+  const labelOf = (q: QrData) => q.tableName || `Meja ${q.tableNumber}`;
+
+  // Render one QR card. Each card is titled with its own table name so a
+  // printed sheet with multiple codes is self-identifying.
+  const renderQrCard = (q: QrData, size: "A4" | "A6"): string => {
+    const label = labelOf(q);
     const restaurantName = profile?.name || "Silakan Scan";
     const logoImg = profile?.logoUrl
-      ? `<img src="${escapeHtml(profile.logoUrl)}" alt="logo" style="max-height:60px;max-width:180px;object-fit:contain;margin-bottom:8px" />`
+      ? `<img src="${escapeHtml(profile.logoUrl)}" alt="logo" style="max-height:48px;max-width:160px;object-fit:contain;margin-bottom:6px" />`
       : "";
     const isA4 = size === "A4";
-    const pageSize = isA4 ? "A4" : "A6";
-    const qrSize = isA4 ? "380px" : "220px";
-    const tableFont = isA4 ? "72px" : "44px";
-    const restFont = isA4 ? "24px" : "16px";
-    const pad = isA4 ? "48px" : "16px";
+    const qrSize = isA4 ? "150px" : "220px";
+    const tableFont = isA4 ? "34px" : "44px";
+    const restFont = isA4 ? "15px" : "16px";
+    const pad = isA4 ? "12px" : "16px";
 
-    w.document.write(`<!doctype html>
-<html>
-<head>
-<meta charset="utf-8" />
-<title>QR ${escapeHtml(label)}</title>
-<style>
-  @page { size: ${pageSize}; margin: 0; }
-  html, body { margin: 0; padding: 0; background: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #111; }
-  .sheet { width: 100%; min-height: 100vh; box-sizing: border-box; padding: ${pad}; display: flex; align-items: center; justify-content: center; }
-  .card { width: 100%; max-width: ${isA4 ? "600px" : "100%"}; text-align: center; border: 2px solid #111; border-radius: 16px; padding: ${isA4 ? "32px" : "18px"}; }
-  .brand { font-size: ${restFont}; font-weight: 700; letter-spacing: 0.02em; margin-bottom: ${isA4 ? "8px" : "4px"}; }
-  .desc { font-size: ${isA4 ? "13px" : "10px"}; color: #555; margin-bottom: ${isA4 ? "20px" : "10px"}; }
-  .divider { width: 40px; height: 3px; background: #111; margin: 0 auto ${isA4 ? "20px" : "10px"}; border-radius: 2px; }
-  .table-label { font-size: 12px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
-  .table-name { font-size: ${tableFont}; font-weight: 900; line-height: 1; margin-bottom: ${isA4 ? "24px" : "12px"}; }
-  .qr-wrap { display: inline-block; padding: ${isA4 ? "12px" : "6px"}; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; }
-  .qr-wrap img { display: block; width: ${qrSize}; height: ${qrSize}; }
-  .instr { margin-top: ${isA4 ? "24px" : "12px"}; text-align: left; font-size: ${isA4 ? "13px" : "10px"}; color: #374151; }
-  .instr ol { margin: 8px 0 0; padding-left: 20px; }
-  .instr li { margin-bottom: 4px; }
-  .footer { margin-top: ${isA4 ? "20px" : "10px"}; font-size: ${isA4 ? "11px" : "8px"}; color: #9ca3af; word-break: break-all; }
-  @media print { .noprint { display: none; } }
-</style>
-</head>
-<body>
-<div class="sheet">
-  <div class="card">
+    return `<div class="card">
     ${logoImg}
     <div class="brand">${escapeHtml(restaurantName)}</div>
-    ${profile?.description ? `<div class="desc">${escapeHtml(profile.description)}</div>` : ""}
     <div class="divider"></div>
     <div class="table-label">Meja</div>
-    <div class="table-name">${escapeHtml(label)}</div>
-    <div class="qr-wrap"><img src="${qrDialog.qrDataUrl}" alt="QR" /></div>
+    <div class="table-name" style="font-size:${tableFont};padding:${pad}">${escapeHtml(label)}</div>
+    <div class="qr-wrap"><img src="${q.qrDataUrl}" alt="QR" style="width:${qrSize};height:${qrSize}" /></div>
     <div class="instr">
       <strong>Cara Memesan</strong>
       <ol>
@@ -208,15 +196,145 @@ export default function AdminTablesPage() {
         <li>Bayar di kasir atau via aplikasi</li>
       </ol>
     </div>
-    <div class="footer">${escapeHtml(qrDialog.url)}</div>
+    <div class="footer">${escapeHtml(q.url)}</div>
+  </div>`;
+  };
+
+  // Open a print window containing the given QR cards, paginating them so
+  // each physical page is filled before moving to the next. A4 packs 6 cards
+  // (3 columns x 2 rows); A6 shows 1 card per page.
+  function openPrintWindow(qrs: QrData[], size: "A4" | "A6") {
+    if (!qrs.length) {
+      toast.error("Tidak ada QR untuk dicetak");
+      return;
+    }
+    const w = window.open("", "_blank", "width=900,height=1100");
+    if (!w) {
+      toast.error("Popup diblokir. Izinkan popup untuk mencetak.");
+      return;
+    }
+
+    const isA4 = size === "A4";
+    const pageSize = isA4 ? "A4" : "A6";
+    const cardsPerPage = isA4 ? 6 : 1;
+
+    // Build pages: chunk cards so each page is full before the next.
+    const pages: string[] = [];
+    for (let i = 0; i < qrs.length; i += cardsPerPage) {
+      const chunk = qrs.slice(i, i + cardsPerPage);
+      // A6 page heading = the single card's label.
+      // A4 page heading = first label + "+N lainnya" when multiple.
+      let heading: string;
+      if (isA4) {
+        const first = labelOf(chunk[0]);
+        const extra = chunk.length - 1;
+        heading = extra > 0 ? `${escapeHtml(first)} +${extra} lainnya` : escapeHtml(first);
+      } else {
+        heading = escapeHtml(labelOf(chunk[0]));
+      }
+
+      const gridStyle = isA4
+        ? "display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(2,1fr);gap:10px;width:100%;height:100%;"
+        : "display:flex;align-items:center;justify-content:center;width:100%;height:100%;";
+      const cardWrapClass = isA4 ? "card-cell" : "card-single";
+
+      pages.push(`<div class="sheet">
+  ${isA4 ? `<div class="page-head">${heading}</div>` : ""}
+  <div class="grid" style="${gridStyle}">
+    ${chunk
+      .map(
+        (q) =>
+          `<div class="${cardWrapClass}">${renderQrCard(q, size)}</div>`
+      )
+      .join("")}
   </div>
-</div>
+</div>`);
+    }
+
+    const sheetsCss = isA4
+      ? `
+  .sheet { width: 210mm; height: 297mm; box-sizing: border-box; padding: 10mm; display: flex; flex-direction: column; page-break-after: always; }
+  .page-head { font-size: 13px; font-weight: 700; margin-bottom: 6px; color: #111; }
+  .card-cell { display: flex; align-items: center; justify-content: center; }
+  .card { width: 100%; height: 100%; max-height: 100%; box-sizing: border-box; text-align: center; border: 1.5px solid #111; border-radius: 8px; padding: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
+  .card .brand { font-size: 13px; font-weight: 700; }
+  .card .table-label { font-size: 8px; }
+  .card .qr-wrap img { width: 120px; height: 120px; }
+  .card .table-name { font-size: 20px; margin: 2px 0; padding: 2px; }
+  .card .instr { font-size: 9px; }
+  .card .instr ol { margin: 2px 0 0; padding-left: 14px; }
+  .card .footer { font-size: 6px; }
+  .card .divider { width: 24px; height: 2px; margin: 3px auto; }`
+      : `
+  .sheet { width: 105mm; height: 148mm; box-sizing: border-box; padding: 6mm; display: flex; flex-direction: column; align-items: center; justify-content: center; page-break-after: always; }
+  .card-single { width: 100%; }
+  .card { width: 100%; text-align: center; border: 1.5px solid #111; border-radius: 12px; padding: 12px; }
+  .card .brand { font-size: 15px; font-weight: 700; }
+  .card .qr-wrap img { width: 200px; height: 200px; }
+  .card .table-name { font-size: 40px; margin: 6px 0; }
+  .card .instr { font-size: 11px; }
+  .card .footer { font-size: 8px; }`;
+
+    w.document.write(`<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>QR Meja</title>
+<style>
+  @page { size: ${pageSize}; margin: 0; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #111; }
+  ${sheetsCss}
+  .brand { font-weight: 700; letter-spacing: 0.02em; }
+  .table-label { font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.1em; }
+  .qr-wrap { display: inline-block; padding: 6px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; }
+  .qr-wrap img { display: block; }
+  .instr { text-align: left; }
+  .instr ol { margin: 6px 0 0; padding-left: 18px; }
+  .instr li { margin-bottom: 3px; }
+  .footer { margin-top: 8px; color: #9ca3af; word-break: break-all; }
+  .divider { width: 30px; height: 2px; background: #111; margin: 4px auto; border-radius: 2px; }
+  .noprint { position: fixed; top: 8px; right: 8px; }
+  @media print { .noprint { display: none; } .sheet:last-child { page-break-after: auto; } }
+</style>
+</head>
+<body>
+<button class="noprint" onclick="window.print()">Cetak</button>
+${pages.join("\n")}
 <script>
-  window.onload = function() { setTimeout(function(){ window.print(); }, 250); };
+  window.onload = function() { setTimeout(function(){ window.print(); }, 300); };
 </script>
 </body>
 </html>`);
     w.document.close();
+  }
+
+  // Print a single QR (from the QR dialog) in the chosen page size — one
+  // card filling the page.
+  const printQr = (size: "A4" | "A6") => {
+    if (!qrDialog) return;
+    openPrintWindow([qrDialog], size);
+  };
+
+  // Print every table's QR, filling each page before continuing to the next.
+  const printAll = async (size: "A4" | "A6") => {
+    if (!tables.length) {
+      toast.error("Belum ada meja");
+      return;
+    }
+    setPrintingAll(size);
+    try {
+      const qrs = await fetchAllQrs();
+      if (!qrs.length) {
+        toast.error("Gagal mengambil QR");
+        return;
+      }
+      openPrintWindow(qrs, size);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Gagal mencetak semua QR");
+    } finally {
+      setPrintingAll(null);
+    }
   };
 
   const downloadQr = () => {
@@ -237,6 +355,35 @@ export default function AdminTablesPage() {
         <Button onClick={openCreate} className="gap-2">
           <Plus className="h-4 w-4" />
           Tambah Meja
+        </Button>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant="outline"
+          onClick={() => printAll("A4")}
+          disabled={!!printingAll}
+          className="gap-2"
+        >
+          {printingAll === "A4" ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Printer className="h-4 w-4" />
+          )}
+          Print All A4
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => printAll("A6")}
+          disabled={!!printingAll}
+          className="gap-2"
+        >
+          {printingAll === "A6" ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Printer className="h-4 w-4" />
+          )}
+          Print All A6
         </Button>
       </div>
 

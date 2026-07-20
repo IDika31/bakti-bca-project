@@ -3,7 +3,7 @@
 import { useRef } from "react";
 import { Minus, Plus, Trash2 } from "lucide-react";
 import { formatCurrency } from "@/lib/format";
-import { useCart } from "@/hooks/use-cart";
+import { useCart, itemAddonTotal } from "@/hooks/use-cart";
 import { toast } from "sonner";
 import type { CartItem as CartItemType } from "@/types";
 
@@ -13,7 +13,7 @@ export function CartItem({ item }: { item: CartItemType }) {
 
   const handleRemove = () => {
     const snapshot = { ...item };
-    removeItem(item.menuItemId);
+    removeItem(item.lineId);
     toast(`${item.name} dihapus`, {
       action: {
         label: "Urungkan",
@@ -25,6 +25,7 @@ export function CartItem({ item }: { item: CartItemType }) {
             priceSnapshot: snapshot.priceSnapshot,
             quantity: snapshot.quantity,
             notes: snapshot.notes,
+            addons: snapshot.addons,
           }),
       },
       duration: 4000,
@@ -35,16 +36,19 @@ export function CartItem({ item }: { item: CartItemType }) {
     if (item.quantity <= 1) {
       handleRemove();
     } else {
-      updateQuantity(item.menuItemId, item.quantity - 1);
+      updateQuantity(item.lineId, item.quantity - 1);
     }
   };
 
   const handleNotesChange = (value: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      updateNotes(item.menuItemId, value);
+      updateNotes(item.lineId, value);
     }, 300);
   };
+
+  const addonTotal = itemAddonTotal(item.addons);
+  const unitPrice = item.priceSnapshot + addonTotal;
 
   return (
     <div className="rounded-2xl border border-border/60 bg-card p-4 shadow-sm transition-all duration-200 hover:border-primary/30 hover:shadow-md">
@@ -52,8 +56,20 @@ export function CartItem({ item }: { item: CartItemType }) {
         <div className="min-w-0 flex-1">
           <p className="font-semibold leading-tight sm:text-lg">{item.name}</p>
           <p className="mt-1 text-sm text-muted-foreground">
-            {formatCurrency(item.priceSnapshot)} <span className="text-xs">/ item</span>
+            {formatCurrency(unitPrice)} <span className="text-xs">/ item</span>
           </p>
+          {item.addons.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {item.addons.map((a) => (
+                <span
+                  key={a.addonId}
+                  className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary"
+                >
+                  + {a.name} ({formatCurrency(a.price)})
+                </span>
+              ))}
+            </div>
+          )}
         </div>
         <button
           onClick={handleRemove}
@@ -77,7 +93,7 @@ export function CartItem({ item }: { item: CartItemType }) {
             {item.quantity}
           </span>
           <button
-            onClick={() => updateQuantity(item.menuItemId, item.quantity + 1)}
+            onClick={() => updateQuantity(item.lineId, item.quantity + 1)}
             aria-label="Tambah"
             className="flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-muted active:scale-95"
           >
@@ -86,7 +102,7 @@ export function CartItem({ item }: { item: CartItemType }) {
         </div>
 
         <span className="text-base font-bold text-primary sm:text-lg">
-          {formatCurrency(item.priceSnapshot * item.quantity)}
+          {formatCurrency(unitPrice * item.quantity)}
         </span>
       </div>
 

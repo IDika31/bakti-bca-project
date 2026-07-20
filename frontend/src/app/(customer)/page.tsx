@@ -15,7 +15,7 @@ import { MenuCard } from "@/components/customer/menu-card";
 import { CartFab } from "@/components/customer/cart-fab";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useOperatingStatus } from "@/hooks/use-operating-status";
-import type { MenuItem, Category, RestaurantProfile, ApiResponse } from "@/types";
+import type { MenuItem, Category, RestaurantProfile, CartItemAddon, ApiResponse } from "@/types";
 
 export default function MenuPage() {
   const router = useRouter();
@@ -56,7 +56,7 @@ export default function MenuPage() {
     fetchMenu();
   }, [fetchMenu]);
 
-  const handleAdd = (item: MenuItem) => {
+  const handleAdd = (item: MenuItem, addons: CartItemAddon[]) => {
     if (!opStatus.loading && !opStatus.isOpen) {
       toast.error("Restoran sedang tutup, tidak bisa memesan.");
       return;
@@ -66,8 +66,10 @@ export default function MenuPage() {
       name: item.name,
       imageUrl: item.imageUrl,
       priceSnapshot: item.price,
+      addons,
     });
-    toast.success(`${item.name} ditambahkan ke keranjang`);
+    const suffix = addons.length ? ` +${addons.length} addon` : "";
+    toast.success(`${item.name}${suffix} ditambahkan ke keranjang`);
   };
 
   return (

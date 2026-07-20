@@ -27,11 +27,32 @@ export const menuItemSchema = z.object({
   categoryId: z.string().uuid(),
 });
 
+// Addon: scope is exactly one of menuItemId (single menu) or categoryId (whole category)
+export const addonSchema = z
+  .object({
+    name: z.string().min(1).max(200),
+    price: z.number().int().min(0),
+    isActive: z.boolean().optional(),
+    sortOrder: z.number().int().optional(),
+    menuItemId: z.string().uuid().optional(),
+    categoryId: z.string().uuid().optional(),
+  })
+  .refine((d) => (d.menuItemId ? 1 : 0) + (d.categoryId ? 1 : 0) === 1, {
+    message: "Pilih salah satu: menuItemId atau categoryId",
+    path: ["menuItemId"],
+  });
+
+export const checkoutItemAddonSchema = z.object({
+  addonId: z.string().uuid(),
+  quantity: z.number().int().min(1).optional(),
+});
+
 export const checkoutItemSchema = z.object({
   menuItemId: z.string().uuid(),
   quantity: z.number().int().min(1),
   priceSnapshot: z.number().int().min(0),
   notes: z.string().max(500).optional(),
+  addons: z.array(checkoutItemAddonSchema).optional(),
 });
 
 export const checkoutSchema = z.object({

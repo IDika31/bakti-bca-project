@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
 import { formatCurrency, ORDER_STATUS_LABELS, PAYMENT_STATUS_LABELS } from "@/lib/format";
 import { AlertCircle, Clock, MapPin, User, XCircle } from "lucide-react";
+import type { ApiResponse } from "@/types";
 
 interface OrderItemDetail {
   id: string;
@@ -15,6 +16,7 @@ interface OrderItemDetail {
   price: number;
   notes: string | null;
   menuItem: { name: string; imageUrl: string | null; description: string | null };
+  addons?: { id: string; name: string; priceSnapshot: number; quantity: number }[];
 }
 
 interface OrderDetail {
@@ -100,8 +102,8 @@ export function AdminOrderDetail({
     setErr(null);
     setOrder(null);
     api
-      .get<OrderDetail>(`/api/admin/orders/${orderId}`, { token })
-      .then(setOrder)
+      .get<ApiResponse<OrderDetail>>(`/api/admin/orders/${orderId}`, { token })
+      .then((r) => setOrder(r?.data ?? null))
       .catch((e) => setErr(e instanceof Error ? e.message : "Gagal memuat detail"))
       .finally(() => setLoading(false));
   }, [orderId, token]);
@@ -187,7 +189,10 @@ function ItemsSection({ items }: { items: OrderItemDetail[] }) {
     <div>
       <p className="mb-2 text-sm font-semibold">Item pesanan ({items.length})</p>
       <div className="space-y-2">
-        {items.map((item) => (
+        {items.map((item) => {
+          const addonTotal = (item.addons ?? []).reduce((s, a) => s + a.priceSnapshot * a.quantity, 0);
+          const unit = item.price + addonTotal;
+          return (
           <div key={item.id} className="flex gap-3 rounded-lg border p-2">
             <div className="relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-md bg-muted">
               {item.menuItem.imageUrl ? (
@@ -203,15 +208,21 @@ function ItemsSection({ items }: { items: OrderItemDetail[] }) {
               <p className="text-xs text-muted-foreground">
                 {item.quantity} × {formatCurrency(item.price)}
               </p>
+              {item.addons && item.addons.length > 0 && (
+                <p className="mt-0.5 text-xs text-primary">
+                  {item.addons.map((a) => `+ ${a.name} (${formatCurrency(a.priceSnapshot)})`).join(", ")}
+                </p>
+              )}
               {item.notes && (
                 <p className="mt-0.5 text-xs italic text-amber-700">Catatan: {item.notes}</p>
               )}
             </div>
             <p className="whitespace-nowrap text-sm font-semibold">
-              {formatCurrency(item.price * item.quantity)}
+              {formatCurrency(unit * item.quantity)}
             </p>
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

@@ -93,6 +93,7 @@ export default function CheckoutPage() {
             quantity: item.quantity,
             priceSnapshot: item.priceSnapshot,
             notes: item.notes || undefined,
+            addons: item.addons.map((a) => ({ addonId: a.addonId })),
           })),
         }
       );
@@ -275,20 +276,29 @@ export default function CheckoutPage() {
                 </h3>
               </div>
               <div className="max-h-60 space-y-0 overflow-y-auto px-4 py-3 sm:px-5">
-                {items.map((item) => (
-                  <div key={item.menuItemId} className="flex justify-between gap-2 py-1.5 text-sm">
+                {items.map((item) => {
+                  const addonTotal = item.addons.reduce((s, a) => s + a.price, 0);
+                  const unit = item.priceSnapshot + addonTotal;
+                  return (
+                  <div key={item.lineId} className="flex justify-between gap-2 py-1.5 text-sm">
                     <div className="min-w-0 flex-1">
                       <span className="font-medium">{item.quantity}x</span>{" "}
                       <span>{item.name}</span>
+                      {item.addons.length > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          {item.addons.map((a) => `+ ${a.name}`).join(", ")}
+                        </p>
+                      )}
                       {item.notes && (
                         <p className="text-xs text-muted-foreground"><StickyNote className="mr-1 inline h-3 w-3" />{item.notes}</p>
                       )}
                     </div>
                     <span className="flex-shrink-0 tabular-nums text-muted-foreground">
-                      {formatCurrency(item.priceSnapshot * item.quantity)}
+                      {formatCurrency(unit * item.quantity)}
                     </span>
                   </div>
-                ))}
+                  );
+                })}
               </div>
 
               {/* Price breakdown */}

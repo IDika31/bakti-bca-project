@@ -57,18 +57,61 @@ checkoutRoute.post("/checkout", async (c) => {
   const menuItemIds = data.items.map((i) => i.menuItemId);
   const menuItems = await prisma.menuItem.findMany({
     where: { id: { in: menuItemIds }, isAvailable: true },
-    select: { id: true, name: true, price: true },
+    select: { id: true, name: true, price: true, categoryId: true },
   });
 
   if (menuItems.length !== menuItemIds.length) {
     return error(c, "Beberapa item tidak tersedia", 400);
   }
 
-  // Calculate subtotal from price snapshots
-  const subtotal = data.items.reduce(
-    (sum, item) => sum + item.priceSnapshot * item.quantity,
-    0
-  );
+  const menuItemMap = new Map(menuItems.map((m) => [m.id, m]));
+
+  // Validate addons + fetch snapshots. An addon is valid for an item if it is
+  // either scoped to that menu item or scoped to the item's category, and active.
+  const allAddonIds = new Set<string>();
+  for (const item of data.items) {
+    for (const a of item.addons ?? []) allAddonIds.add(a.addonId);
+  }
+
+  let addonSnapshots = new Map<
+    string,
+    { id: string; name: string; price: number; menuItemId: string | null; categoryId: string | null }
+  >();
+  if (allAddonIds.size > 0) {
+    const addons = await prisma.addon.findMany({
+      where: { id: { in: [...allAddonIds] }, isActive: true },
+      select: { id: true, name: true, price: true, menuItemId: true, categoryId: true },
+    });
+    addonSnapshots = new Map(addons.map((a) => [a.id, a]));
+
+    // Validate each item's addons belong to it (menu-scoped) or its category (category-scoped)
+    for (const item of data.items) {
+      const menu = menuItemMap.get(item.menuItemId);
+      if (!menu) continue;
+      for (const a of item.addons ?? []) {
+        const snap = addonSnapshots.get(a.addonId);
+        if (!snap) {
+          return error(c, `Addon tidak valid atau tidak aktif`, 400);
+        }
+        const belongsToMenu = snap.menuItemId === item.menuItemId;
+        const belongsToCategory = snap.categoryId === menu.categoryId;
+        if (!belongsToMenu && !belongsToCategory) {
+          return error(c, `Addon "${snap.name}" tidak berlaku untuk item ini`, 400);
+        }
+      }
+    }
+  }
+
+  // Calculate subtotal from price snapshots (base price + addons) * quantity
+  const subtotal = data.items.reduce((sum, item) => {
+    const addonTotal = (item.addons ?? []).reduce((s, a) => {
+      const snap = addonSnapshots.get(a.addonId);
+      const addonPrice = snap?.price ?? 0;
+      const qty = a.quantity ?? 1;
+      return s + addonPrice * qty;
+    }, 0);
+    return sum + (item.priceSnapshot + addonTotal) * item.quantity;
+  }, 0);
 
   // Get tax/service config
   const taxConfig = await prisma.taxServiceConfig.findFirst();
@@ -85,10 +128,12 @@ checkoutRoute.post("/checkout", async (c) => {
     || (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : null)
     || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3001");
 
-  // Generate placeholder email if empty
-  const appDomain = baseUrl.replace(/https?:\/\//, "");
+  // Generate placeholder email if empty.
+  // Use a neutral default domain (env-configurable) so customer emails never
+  // leak the deployment host / project brand.
+  const emailDomain = process.env.DEFAULT_EMAIL_DOMAIN || "noreply.local";
   const customerEmail =
-    data.customerEmail || `order-${orderNumber}@${appDomain}`;
+    data.customerEmail || `order-${orderNumber}@${emailDomain}`;
 
   // Create order + items in transaction
   const order = await prisma.$transaction(async (tx) => {
@@ -115,6 +160,17 @@ checkoutRoute.post("/checkout", async (c) => {
             quantity: item.quantity,
             priceSnapshot: item.priceSnapshot,
             notes: item.notes || null,
+            addons: {
+              create: (item.addons ?? []).map((a) => {
+                const snap = addonSnapshots.get(a.addonId);
+                return {
+                  addonId: a.addonId,
+                  name: snap?.name ?? "Addon",
+                  priceSnapshot: snap?.price ?? 0,
+                  quantity: a.quantity ?? 1,
+                };
+              }),
+            },
           })),
         },
       },
@@ -140,19 +196,27 @@ checkoutRoute.post("/checkout", async (c) => {
 
   // Create Tripay transaction
   try {
-    const menuItemMap = new Map(menuItems.map((m) => [m.id, m]));
-
     const tripayResult = await createTransaction({
       method: data.paymentMethodCode,
       merchantRef: orderNumber,
       amount: priceBreakdown.grandTotal,
       customerName: data.customerName || `Meja`,
       customerEmail,
-      orderItems: data.items.map((item) => ({
-        name: menuItemMap.get(item.menuItemId)?.name || "Item",
-        price: item.priceSnapshot,
-        quantity: item.quantity,
-      })),
+      orderItems: data.items.map((item) => {
+        const addonTotal = (item.addons ?? []).reduce((s, a) => {
+          const snap = addonSnapshots.get(a.addonId);
+          return s + (snap?.price ?? 0) * (a.quantity ?? 1);
+        }, 0);
+        const addonNames = (item.addons ?? [])
+          .map((a) => addonSnapshots.get(a.addonId)?.name)
+          .filter(Boolean);
+        const baseName = menuItemMap.get(item.menuItemId)?.name || "Item";
+        return {
+          name: addonNames.length ? `${baseName} (+${addonNames.join(", ")})` : baseName,
+          price: item.priceSnapshot + addonTotal,
+          quantity: item.quantity,
+        };
+      }),
       callbackUrl: `${baseUrl}/api/tripay/callback`,
       returnUrl: `${baseUrl}/order/${order.id}`,
     });
