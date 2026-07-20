@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { MapPin, UtensilsCrossed } from "lucide-react";
 import { api } from "@/lib/api";
@@ -27,9 +27,13 @@ export default function MenuPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, 300);
+
+  // Active category tab — driven by scroll position, also set on tab click
+  // so the highlight is immediate before IntersectionObserver catches up.
+  const [activeCat, setActiveCat] = useState<string | null>(null);
+  const sectionsRef = useRef<Record<string, HTMLElement | null>>({});
 
   useEffect(() => {
     Promise.all([
@@ -41,20 +45,71 @@ export default function MenuPage() {
     });
   }, []);
 
+  // Load ALL menu (no category filter) — sections are rendered per category.
   const fetchMenu = useCallback(async () => {
     setLoading(true);
     const params = new URLSearchParams();
-    if (selectedCategory) params.set("category", selectedCategory);
     if (debouncedSearch) params.set("search", debouncedSearch);
 
     const res = await api.get<ApiResponse<MenuItem[]>>(`/api/menu?${params}`);
     setMenuItems(res.data);
     setLoading(false);
-  }, [selectedCategory, debouncedSearch]);
+  }, [debouncedSearch]);
 
   useEffect(() => {
     fetchMenu();
   }, [fetchMenu]);
+
+  // Group items by category, preserving category sort order. Drop empty
+  // categories (nothing to show there).
+  const grouped = useMemo(() => {
+    const byCat = new Map<string, MenuItem[]>();
+    for (const item of menuItems) {
+      const arr = byCat.get(item.categoryId) ?? [];
+      arr.push(item);
+      byCat.set(item.categoryId, arr);
+    }
+    return categories
+      .filter((c) => byCat.has(c.id))
+      .map((c) => ({ category: c, items: byCat.get(c.id)! }));
+  }, [categories, menuItems]);
+
+  // Active-tab-on-scroll: highlight the section currently in view.
+  useEffect(() => {
+    if (grouped.length === 0) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        // Pick the topmost intersecting section.
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        if (visible[0]) {
+          const id = visible[0].target.getAttribute("data-cat-id");
+          if (id) setActiveCat(id);
+        }
+      },
+      // Trigger when section header crosses ~25% from top (below sticky tabs).
+      { rootMargin: "-30% 0px -65% 0px", threshold: 0 }
+    );
+    for (const el of Object.values(sectionsRef.current)) {
+      if (el) observer.observe(el);
+    }
+    return () => observer.disconnect();
+  }, [grouped]);
+
+  // Scroll a category section into view (called from tab click).
+  const handleTabSelect = (id: string | null) => {
+    setActiveCat(id);
+    if (!id) {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+    const el = sectionsRef.current[id];
+    if (el) {
+      const y = el.getBoundingClientRect().top + window.scrollY - 140; // offset for sticky tabs
+      window.scrollTo({ top: y, behavior: "smooth" });
+    }
+  };
 
   const handleAdd = (item: MenuItem, addons: CartItemAddon[]) => {
     if (!opStatus.loading && !opStatus.isOpen) {
@@ -110,35 +165,39 @@ export default function MenuPage() {
         <MenuSearch value={search} onChange={setSearch} />
         <div className="mx-auto max-w-6xl">
           <CategoryTabs
-            categories={categories}
-            selected={selectedCategory}
-            onSelect={setSelectedCategory}
+            categories={grouped.map((g) => g.category)}
+            activeId={activeCat}
+            onSelect={handleTabSelect}
           />
         </div>
       </div>
 
-      {/* Menu grid */}
+      {/* Menu grouped by category */}
       <div className="mx-auto mt-4 max-w-6xl px-4 sm:px-6 md:px-8">
         {loading ? (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-5">
-            {Array.from({ length: 10 }).map((_, i) => (
-              <div
-                key={i}
-                className="overflow-hidden rounded-2xl border border-border bg-card"
-              >
-                <Skeleton className="aspect-[4/3] w-full rounded-none" />
-                <div className="space-y-2 p-3">
-                  <Skeleton className="h-4 w-3/4" />
-                  <Skeleton className="h-3 w-1/2" />
-                  <div className="flex justify-between pt-1">
-                    <Skeleton className="h-4 w-16" />
-                    <Skeleton className="h-8 w-8 rounded-full" />
-                  </div>
+          <div className="space-y-8">
+            {Array.from({ length: 2 }).map((_, s) => (
+              <div key={s}>
+                <Skeleton className="mb-3 h-7 w-40" />
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-5">
+                  {Array.from({ length: 8 }).map((_, i) => (
+                    <div key={i} className="overflow-hidden rounded-2xl border border-border bg-card">
+                      <Skeleton className="aspect-[4/3] w-full rounded-none" />
+                      <div className="space-y-2 p-3">
+                        <Skeleton className="h-4 w-3/4" />
+                        <Skeleton className="h-3 w-1/2" />
+                        <div className="flex justify-between pt-1">
+                          <Skeleton className="h-4 w-16" />
+                          <Skeleton className="h-8 w-8 rounded-full" />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             ))}
           </div>
-        ) : menuItems.length === 0 ? (
+        ) : grouped.length === 0 ? (
           <div className="flex flex-col items-center gap-4 py-20 text-center">
             <div className="flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-muted to-muted/40 shadow-inner">
               <UtensilsCrossed className="h-10 w-10 text-muted-foreground/40" />
@@ -153,9 +212,27 @@ export default function MenuPage() {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-5">
-            {menuItems.map((item) => (
-              <MenuCard key={item.id} item={item} onAdd={handleAdd} />
+          <div className="space-y-10">
+            {grouped.map(({ category, items }) => (
+              <section
+                key={category.id}
+                data-cat-id={category.id}
+                ref={(el) => { sectionsRef.current[category.id] = el; }}
+                className="scroll-mt-32"
+              >
+                <h2 className="mb-3 flex items-center gap-2 text-lg font-bold sm:text-xl">
+                  <span className="h-5 w-1.5 rounded-full bg-primary" />
+                  {category.name}
+                  <span className="text-sm font-normal text-muted-foreground">
+                    ({items.length})
+                  </span>
+                </h2>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-5">
+                  {items.map((item) => (
+                    <MenuCard key={item.id} item={item} onAdd={handleAdd} />
+                  ))}
+                </div>
+              </section>
             ))}
           </div>
         )}

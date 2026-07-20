@@ -6,19 +6,22 @@ import { cn } from "@/lib/utils";
 
 interface CategoryTabsProps {
   categories: Category[];
-  selected: string | null;
+  /** Currently-active category id (drives highlight). null = "Semua". */
+  activeId: string | null;
+  /** Called on tab click with the category id, or null for "Semua". */
   onSelect: (id: string | null) => void;
 }
 
-export function CategoryTabs({ categories, selected, onSelect }: CategoryTabsProps) {
+export function CategoryTabs({ categories, activeId, onSelect }: CategoryTabsProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Keep the active tab in view inside the horizontal scroller.
   useEffect(() => {
-    if (selected && scrollRef.current) {
-      const active = scrollRef.current.querySelector(`[data-id="${selected}"]`);
-      active?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
-    }
-  }, [selected]);
+    const active = activeId
+      ? scrollRef.current?.querySelector(`[data-id="${activeId}"]`)
+      : scrollRef.current?.querySelector(`[data-id="__all"]`);
+    active?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+  }, [activeId]);
 
   if (categories.length === 0) return null;
 
@@ -33,10 +36,11 @@ export function CategoryTabs({ categories, selected, onSelect }: CategoryTabsPro
         className="flex gap-2 overflow-x-auto px-4 py-2 scrollbar-hide sm:px-6 md:px-8"
       >
         <button
+          data-id="__all"
           onClick={() => onSelect(null)}
           className={cn(
             "flex-shrink-0 whitespace-nowrap rounded-full px-5 py-2 text-sm font-medium transition-all duration-200",
-            !selected
+            !activeId
               ? "bg-primary text-primary-foreground shadow-lg shadow-primary/30 ring-2 ring-primary/20 ring-offset-2 ring-offset-background"
               : "border border-border bg-card text-muted-foreground hover:-translate-y-0.5 hover:border-primary/40 hover:text-foreground hover:shadow-md"
           )}
@@ -50,7 +54,7 @@ export function CategoryTabs({ categories, selected, onSelect }: CategoryTabsPro
             onClick={() => onSelect(cat.id)}
             className={cn(
               "flex-shrink-0 whitespace-nowrap rounded-full px-5 py-2 text-sm font-medium transition-all duration-200",
-              selected === cat.id
+              activeId === cat.id
                 ? "bg-primary text-primary-foreground shadow-lg shadow-primary/30 ring-2 ring-primary/20 ring-offset-2 ring-offset-background"
                 : "border border-border bg-card text-muted-foreground hover:-translate-y-0.5 hover:border-primary/40 hover:text-foreground hover:shadow-md"
             )}
