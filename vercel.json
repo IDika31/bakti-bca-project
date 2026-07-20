@@ -26,11 +26,6 @@
         "service": "frontend"
       }
     }
-  ],
-  "githubCommentNotifications": true,
-  "gitDeploymentAutoEnabled": {
-    "production": true,
-    "preview": true
-  }
+  ]
 }
 
