@@ -90,7 +90,7 @@ Vercel uses the git branch to pick the environment target:
 - Pushes to **`main`** → **Production** deployment.
 - Pushes to **`dev`** (and any PR branch) → **Preview** deployment.
 
-`vercel.json` already enables `gitDeploymentAutoEnabled` for both production and preview, and posts deployment status back to GitHub PRs (`githubCommentNotifications: true`). No further config needed once the repo is imported into Vercel.
+Vercel creates a Preview Deployment for every branch/PR and a Production Deployment for `main` automatically once the repo is imported — no `vercel.json` flag needed (those are dashboard-only settings, not valid schema properties). To post deployment status back to GitHub PR comments, enable it in Project Settings → Git → "Comment on Pull Requests".
 
 If the project is not yet imported:
 1. Vercel dashboard → Add New → Project → import `IDika31/bakti-bca-project`.

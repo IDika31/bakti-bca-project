@@ -5,6 +5,7 @@ import { checkoutSchema } from "../lib/validators.js";
 import { calculatePrice } from "../lib/price.js";
 import { generateOrderNumber } from "../lib/order-number.js";
 import { createTransaction } from "../lib/tripay.js";
+import { witaClock } from "../lib/time.js";
 
 const checkoutRoute = new Hono();
 
@@ -17,15 +18,16 @@ checkoutRoute.post("/checkout", async (c) => {
 
   const data = parsed.data;
 
-  // Guard: restaurant must be open
-  const now = new Date();
+  // Guard: restaurant must be open (hours are interpreted in WITA / Asia/Makassar,
+  // not the server's UTC clock).
+  const clock = witaClock();
   const todayHours = await prisma.operatingHours.findUnique({
-    where: { dayOfWeek: now.getDay() },
+    where: { dayOfWeek: clock.dayOfWeek },
   });
   if (todayHours && !todayHours.isClosed) {
     const [oh, om] = todayHours.openTime.split(":").map(Number);
     const [ch, cm] = todayHours.closeTime.split(":").map(Number);
-    const nowMin = now.getHours() * 60 + now.getMinutes();
+    const nowMin = clock.minutes;
     const openMin = (oh ?? 0) * 60 + (om ?? 0);
     const closeMin = (ch ?? 0) * 60 + (cm ?? 0);
     const overnight = closeMin <= openMin;

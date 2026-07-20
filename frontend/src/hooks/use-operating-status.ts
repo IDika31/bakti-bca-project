@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { witaClock } from "@/lib/time";
 import type { ApiResponse, OperatingHours } from "@/types";
 
 export interface OperatingStatus {
@@ -23,8 +24,8 @@ function parseHM(hm: string): { h: number; m: number } | null {
 }
 
 function computeStatus(hours: OperatingHours[]): OperatingStatus {
-  const now = new Date();
-  const dow = now.getDay();
+  const clock = witaClock();
+  const dow = clock.dayOfWeek;
   const today = hours.find((h) => h.dayOfWeek === dow) ?? null;
 
   if (!today || today.isClosed) {
@@ -42,7 +43,7 @@ function computeStatus(hours: OperatingHours[]): OperatingStatus {
     return { isOpen: true, today, loading: false, message: "Buka" };
   }
 
-  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const nowMin = clock.minutes;
   const openMin = open.h * 60 + open.m;
   const closeMin = close.h * 60 + close.m;
   const overnight = closeMin <= openMin;
