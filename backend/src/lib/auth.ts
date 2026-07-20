@@ -64,12 +64,21 @@ export async function authMiddleware(c: Context, next: Next) {
 }
 
 /**
+ * Read the authenticated user set by authMiddleware. Casts through `unknown`
+ * so it works without the hono ContextVariableMap module augmentation (which
+ * some typecheck environments — e.g. Vercel's @vercel/backends — don't load).
+ */
+export function getAuthUser(c: Context): AuthUser | undefined {
+  return c.get("user" as never) as unknown as AuthUser | undefined;
+}
+
+/**
  * Role guard middleware. Place AFTER authMiddleware (which sets c.get("user")).
  * Returns 403 if the authenticated user's role is not in the allowed set.
  */
 export function requireRole(...allowed: Role[]) {
   return async (c: Context, next: Next) => {
-    const user = c.get("user") as AuthUser | undefined;
+    const user = getAuthUser(c);
     if (!user || !allowed.includes(user.role)) {
       return c.json({ success: false, error: "Forbidden: role tidak diizinkan" }, 403);
     }

@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { prisma } from "../../lib/prisma.js";
 import { success, error } from "../../lib/response.js";
 import { createUserSchema, updateUserSchema } from "../../lib/validators.js";
-import { requireRole, type AuthUser } from "../../lib/auth.js";
+import { requireRole, getAuthUser } from "../../lib/auth.js";
 
 const userRoutes = new Hono();
 userRoutes.use("*", requireRole("OWNER"));
@@ -58,7 +58,8 @@ userRoutes.post("/", async (c) => {
 // PUT /admin/users/:id  (update name/role/isActive, optional password reset)
 userRoutes.put("/:id", async (c) => {
   const id = c.req.param("id");
-  const me = c.get("user") as AuthUser;
+  const me = getAuthUser(c);
+  if (!me) return error(c, "Unauthorized", 401);
   const body = await c.req.json();
   const parsed = updateUserSchema.safeParse(body);
   if (!parsed.success) {
@@ -111,7 +112,8 @@ userRoutes.put("/:id", async (c) => {
 // DELETE /admin/users/:id
 userRoutes.delete("/:id", async (c) => {
   const id = c.req.param("id");
-  const me = c.get("user") as AuthUser;
+  const me = getAuthUser(c);
+  if (!me) return error(c, "Unauthorized", 401);
 
   if (id === me.id) return error(c, "Tidak bisa menghapus akun sendiri", 400);
 
