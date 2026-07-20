@@ -25,6 +25,7 @@ const BROWSER_KEY = "admin-browser-notif";
 function playNotificationSound() {
   try {
     const ctx = new AudioContext();
+    // Resume in case the context was created suspended (autoplay policy).
     if (ctx.state === "suspended") void ctx.resume();
 
     const master = ctx.createGain();
@@ -39,6 +40,7 @@ function playNotificationSound() {
       osc.type = "square"; // brighter, harsher — easier to hear over noise
       osc.frequency.setValueAtTime(freqA, startAt);
       osc.frequency.setValueAtTime(freqB, startAt + 0.12);
+      // Sharp attack, slight decay, hold, then quick release per beep.
       env.gain.setValueAtTime(0.0001, startAt);
       env.gain.exponentialRampToValueAtTime(1.0, startAt + 0.02);
       env.gain.setValueAtTime(1.0, startAt + 0.38);
@@ -59,6 +61,7 @@ function playNotificationSound() {
     burst(t);        // first burst
     burst(t + 2.6);  // second burst — repeats so it's harder to miss
 
+    // Close the AudioContext after the last beep finishes.
     const totalMs = (2.6 + 1.8 + 0.52) * 1000 + 200;
     window.setTimeout(() => { void ctx.close(); }, totalMs);
   } catch {}
