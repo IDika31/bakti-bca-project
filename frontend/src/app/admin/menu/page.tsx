@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Plus, Pencil, Trash2, Upload, X, ImageIcon, Loader2, Search } from "lucide-react";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { Plus, Pencil, Trash2, Upload, X, ImageIcon, Loader2, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { api, resolveImageUrl } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
+import { useDebounce } from "@/hooks/use-debounce";
 import { toast } from "sonner";
 import type { ApiResponse, PaginatedResponse, Category } from "@/types";
 
@@ -36,28 +37,37 @@ export default function AdminMenuPage() {
   const [imageMode, setImageMode] = useState<"upload" | "url">("upload");
   const [uploading, setUploading] = useState(false);
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebounce(search, 300);
   const [categoryFilter, setCategoryFilter] = useState("ALL");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const PAGE_LIMIT = 50;
   const [deleteTarget, setDeleteTarget] = useState<MenuItemAdmin | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const token = typeof window !== "undefined" ? localStorage.getItem("admin-token") || "" : "";
 
-  const fetchData = async () => {
-    const [menuRes, catRes] = await Promise.all([
-      api.get<PaginatedResponse<MenuItemAdmin>>("/api/admin/menu", { token }),
-      api.get<ApiResponse<Category[]>>("/api/admin/categories", { token }),
-    ]);
+  const fetchMenu = useCallback(async () => {
+    const params = new URLSearchParams();
+    params.set("page", String(page));
+    params.set("limit", String(PAGE_LIMIT));
+    if (debouncedSearch) params.set("search", debouncedSearch);
+    if (categoryFilter !== "ALL") params.set("category", categoryFilter);
+    const menuRes = await api.get<PaginatedResponse<MenuItemAdmin>>(`/api/admin/menu?${params}`, { token });
     setItems(menuRes.data);
-    setCategories(catRes.data);
-  };
+    setTotal(menuRes.meta.total);
+    setTotalPages(menuRes.meta.totalPages);
+  }, [page, debouncedSearch, categoryFilter, token]);
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => {
+    api.get<ApiResponse<Category[]>>("/api/admin/categories", { token }).then((res) => setCategories(res.data));
+  }, [token]);
 
-  const filtered = items.filter((item) => {
-    const matchSearch = !search || item.name.toLowerCase().includes(search.toLowerCase());
-    const matchCategory = categoryFilter === "ALL" || item.categoryId === categoryFilter;
-    return matchSearch && matchCategory;
-  });
+  useEffect(() => { fetchMenu(); }, [fetchMenu]);
+
+  // Reset to page 1 when filters change.
+  useEffect(() => { setPage(1); }, [debouncedSearch, categoryFilter]);
 
   const openCreate = () => {
     setEditing(null);
@@ -122,7 +132,7 @@ export default function AdminMenuPage() {
         toast.success("Menu ditambahkan");
       }
       setDialogOpen(false);
-      fetchData();
+      fetchMenu();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Gagal menyimpan");
     }
@@ -134,7 +144,7 @@ export default function AdminMenuPage() {
       await api.delete(`/api/admin/menu/${deleteTarget.id}`, { token });
       toast.success("Menu dihapus");
       setDeleteTarget(null);
-      fetchData();
+      fetchMenu();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Gagal menghapus");
     }
@@ -142,7 +152,7 @@ export default function AdminMenuPage() {
 
   const toggleAvailability = async (id: string, isAvailable: boolean) => {
     await api.patch(`/api/admin/menu/${id}/availability`, { isAvailable }, { token });
-    fetchData();
+    fetchMenu();
   };
 
   return (
@@ -178,10 +188,16 @@ export default function AdminMenuPage() {
         </Select>
       </div>
 
-      <p className="text-xs text-muted-foreground">{filtered.length} menu</p>
+      <p className="text-xs text-muted-foreground">{total} menu{totalPages > 1 ? ` · halaman ${page}/${totalPages}` : ""}</p>
 
       <div className="space-y-2">
-        {filtered.map((item) => (
+        {items.length === 0 ? (
+          <Card>
+            <CardContent className="p-6 text-center text-sm text-muted-foreground">
+              Tidak ada menu{debouncedSearch || categoryFilter !== "ALL" ? " yang cocok dengan filter" : ""}. Klik &ldquo;Tambah Menu&rdquo; untuk membuat.
+            </CardContent>
+          </Card>
+        ) : items.map((item) => (
           <Card key={item.id}>
             <CardContent className="flex items-center gap-3 p-3">
               <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-lg border bg-muted">
@@ -218,6 +234,32 @@ export default function AdminMenuPage() {
           </Card>
         ))}
       </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-3 pt-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page <= 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Sebelumnya
+          </Button>
+          <span className="text-sm text-muted-foreground tabular-nums">
+            {page} / {totalPages}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page >= totalPages}
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+          >
+            Berikutnya
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
 
       {/* Create/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

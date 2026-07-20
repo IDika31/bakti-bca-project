@@ -5,14 +5,18 @@ import { menuItemSchema } from "../../lib/validators.js";
 
 const menuRoutes = new Hono();
 
-// GET /admin/menu?page=1&limit=20&category=ID
+// GET /admin/menu?page=1&limit=50&category=ID&search=TERM
 menuRoutes.get("/", async (c) => {
   const page = Number(c.req.query("page") || 1);
-  const limit = Number(c.req.query("limit") || 20);
+  const limit = Number(c.req.query("limit") || 50);
   const categoryId = c.req.query("category");
+  const search = c.req.query("search");
 
   const where: Record<string, unknown> = {};
   if (categoryId) where.categoryId = categoryId;
+  if (search) {
+    where.name = { contains: search, mode: "insensitive" };
+  }
 
   const [items, total] = await Promise.all([
     prisma.menuItem.findMany({
