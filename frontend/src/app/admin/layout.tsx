@@ -5,23 +5,29 @@ import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import {
   LayoutDashboard, UtensilsCrossed, FolderOpen, ShoppingBag, Tags,
-  CreditCard, Table2, Settings, BarChart3, LogOut, Menu, X,
+  CreditCard, Table2, Settings, BarChart3, LogOut, Menu, X, Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/sonner";
 import { AdminNotifications, AdminNotificationsProvider, useAdminNotifications } from "@/components/admin/admin-notifications";
 import { cn } from "@/lib/utils";
+import { api } from "@/lib/api";
+import { getAdminToken, setAdminSession, clearAdminSession } from "@/lib/auth";
+import type { AdminRole, AdminUser, ApiResponse } from "@/types";
 
-const NAV_ITEMS = [
-  { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/admin/orders", label: "Pesanan", icon: ShoppingBag },
-  { href: "/admin/menu", label: "Menu", icon: UtensilsCrossed },
-  { href: "/admin/categories", label: "Kategori", icon: FolderOpen },
-  { href: "/admin/addons", label: "Addon", icon: Tags },
-  { href: "/admin/tables", label: "Meja & QR", icon: Table2 },
-  { href: "/admin/payments", label: "Pembayaran", icon: CreditCard },
-  { href: "/admin/reports", label: "Laporan", icon: BarChart3 },
-  { href: "/admin/settings", label: "Pengaturan", icon: Settings },
+const ALL: AdminRole[] = ["OWNER", "ADMIN", "CASHIER"];
+
+const NAV_ITEMS: { href: string; label: string; icon: typeof LayoutDashboard; roles: AdminRole[] }[] = [
+  { href: "/admin", label: "Dashboard", icon: LayoutDashboard, roles: ALL },
+  { href: "/admin/orders", label: "Pesanan", icon: ShoppingBag, roles: ALL },
+  { href: "/admin/menu", label: "Menu", icon: UtensilsCrossed, roles: ["OWNER", "ADMIN"] },
+  { href: "/admin/categories", label: "Kategori", icon: FolderOpen, roles: ["OWNER", "ADMIN"] },
+  { href: "/admin/addons", label: "Addon", icon: Tags, roles: ["OWNER", "ADMIN"] },
+  { href: "/admin/tables", label: "Meja & QR", icon: Table2, roles: ["OWNER", "ADMIN"] },
+  { href: "/admin/payments", label: "Pembayaran", icon: CreditCard, roles: ["OWNER", "ADMIN"] },
+  { href: "/admin/reports", label: "Laporan", icon: BarChart3, roles: ["OWNER", "ADMIN"] },
+  { href: "/admin/settings", label: "Pengaturan", icon: Settings, roles: ["OWNER"] },
+  { href: "/admin/users", label: "Kelola User", icon: Users, roles: ["OWNER"] },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -38,24 +44,33 @@ function AdminShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [user, setUser] = useState<{ name: string } | null>(null);
+  const [user, setUser] = useState<AdminUser | null>(null);
   const { unreadCount } = useAdminNotifications();
 
   useEffect(() => {
-    const token = localStorage.getItem("admin-token");
-    const stored = localStorage.getItem("admin-user");
+    const token = getAdminToken();
     if (!token) {
       router.replace("/admin/login");
       return;
     }
-    if (stored) setUser(JSON.parse(stored));
+    // Verify session server-side (authoritative role + isActive). Falls back to
+    // cached localStorage user for instant paint; refreshes from /me.
+    const stored = localStorage.getItem("admin-user");
+    if (stored) {
+      try { setUser(JSON.parse(stored) as AdminUser); } catch { /* ignore */ }
+    }
+    api.get<ApiResponse<AdminUser>>("/api/admin/me", { token })
+      .then((res) => { setUser(res.data); setAdminSession(token, res.data); })
+      .catch(() => { clearAdminSession(); router.replace("/admin/login"); });
   }, [router]);
 
   const handleLogout = () => {
-    localStorage.removeItem("admin-token");
-    localStorage.removeItem("admin-user");
+    clearAdminSession();
     router.replace("/admin/login");
   };
+
+  const visibleNav = user ? NAV_ITEMS.filter((i) => i.roles.includes(user.role)) : NAV_ITEMS;
+  const activeItem = visibleNav.find((i) => i.href === pathname);
 
   return (
     <div className="flex min-h-screen">
@@ -79,7 +94,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav className="space-y-1 p-3">
-          {NAV_ITEMS.map((item) => {
+          {visibleNav.map((item) => {
             const isOrders = item.href === "/admin/orders";
             const showBadge = isOrders && unreadCount > 0;
             return (
@@ -107,7 +122,14 @@ function AdminShell({ children }: { children: React.ReactNode }) {
         </nav>
 
         <div className="absolute bottom-0 w-full border-t p-3">
-          <div className="mb-2 px-3 text-sm text-muted-foreground">{user?.name}</div>
+          <div className="mb-2 px-3 text-sm text-muted-foreground">
+            <div className="truncate">{user?.name}</div>
+            {user && (
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-primary">
+                {user.role}
+              </span>
+            )}
+          </div>
           <Button variant="ghost" className="w-full justify-start gap-3 text-sm" onClick={handleLogout}>
             <LogOut className="h-4 w-4" />
             Keluar
@@ -122,7 +144,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
             <Menu className="h-5 w-5" />
           </Button>
           <h2 className="font-semibold">
-            {NAV_ITEMS.find((i) => i.href === pathname)?.label || "Admin"}
+            {activeItem?.label || "Admin"}
           </h2>
           <div className="ml-auto">
             <AdminNotifications />

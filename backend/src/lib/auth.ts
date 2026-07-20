@@ -2,6 +2,15 @@ import type { Context, Next } from "hono";
 import { SignJWT, jwtVerify } from "jose";
 import { prisma } from "./prisma.js";
 
+export type Role = "OWNER" | "ADMIN" | "CASHIER";
+
+export interface AuthUser {
+  id: string;
+  username: string;
+  role: Role;
+  isActive: boolean;
+}
+
 const secret = new TextEncoder().encode(
   process.env.JWT_SECRET || "dev-secret-change-me"
 );
@@ -9,7 +18,7 @@ const secret = new TextEncoder().encode(
 export async function signToken(payload: {
   userId: string;
   username: string;
-  role: string;
+  role: Role;
 }): Promise<string> {
   return new SignJWT(payload)
     .setProtectedHeader({ alg: "HS256" })
@@ -20,10 +29,10 @@ export async function signToken(payload: {
 
 export async function verifyToken(
   token: string
-): Promise<{ userId: string; username: string; role: string } | null> {
+): Promise<{ userId: string; username: string; role: Role } | null> {
   try {
     const { payload } = await jwtVerify(token, secret);
-    return payload as { userId: string; username: string; role: string };
+    return payload as { userId: string; username: string; role: Role };
   } catch {
     return null;
   }
@@ -50,6 +59,20 @@ export async function authMiddleware(c: Context, next: Next) {
     return c.json({ success: false, error: "User tidak ditemukan atau nonaktif" }, 401);
   }
 
-  c.set("user", user);
+  c.set("user", user as AuthUser);
   await next();
+}
+
+/**
+ * Role guard middleware. Place AFTER authMiddleware (which sets c.get("user")).
+ * Returns 403 if the authenticated user's role is not in the allowed set.
+ */
+export function requireRole(...allowed: Role[]) {
+  return async (c: Context, next: Next) => {
+    const user = c.get("user") as AuthUser | undefined;
+    if (!user || !allowed.includes(user.role)) {
+      return c.json({ success: false, error: "Forbidden: role tidak diizinkan" }, 403);
+    }
+    await next();
+  };
 }

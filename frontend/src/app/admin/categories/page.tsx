@@ -12,6 +12,7 @@ import { api } from "@/lib/api";
 import { toast } from "sonner";
 import { ConfirmDialog, useConfirmDialog } from "@/components/ui/confirm-dialog";
 import type { ApiResponse } from "@/types";
+import { useRequireRole } from "@/hooks/use-require-role";
 
 interface CategoryAdmin {
   id: string;
@@ -21,6 +22,7 @@ interface CategoryAdmin {
 }
 
 export default function AdminCategoriesPage() {
+  const { ready, allowed } = useRequireRole("OWNER", "ADMIN");
   const [categories, setCategories] = useState<CategoryAdmin[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<CategoryAdmin | null>(null);
@@ -37,7 +39,7 @@ export default function AdminCategoriesPage() {
     setCategories(res.data);
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { void fetchData(); }, [token]);
 
   const openCreate = () => {
     setEditing(null);
@@ -86,6 +88,8 @@ export default function AdminCategoriesPage() {
       toast.error(err instanceof Error ? err.message : "Gagal menghapus");
     }
   };
+
+  if (!ready || !allowed) return null;
 
   return (
     <div className="space-y-4">

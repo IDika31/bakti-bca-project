@@ -1,8 +1,10 @@
 import { Hono } from "hono";
 import { prisma } from "../../lib/prisma.js";
 import { success } from "../../lib/response.js";
+import { requireRole } from "../../lib/auth.js";
 
 const dashboardRoutes = new Hono();
+dashboardRoutes.use("*", requireRole("OWNER", "ADMIN", "CASHIER"));
 
 dashboardRoutes.get("/", async (c) => {
   const today = new Date();

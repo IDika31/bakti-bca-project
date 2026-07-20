@@ -8,8 +8,10 @@ import {
   tripayConfigSchema,
 } from "../../lib/validators.js";
 import { deleteImageIfUnused } from "../../lib/storage-cleanup.js";
+import { requireRole } from "../../lib/auth.js";
 
 const settingsRoutes = new Hono();
+settingsRoutes.use("*", requireRole("OWNER"));
 
 // --- Restaurant Profile ---
 settingsRoutes.get("/profile", async (c) => {

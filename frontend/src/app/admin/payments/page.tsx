@@ -15,6 +15,7 @@ import {
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import type { ApiResponse } from "@/types";
+import { useRequireRole } from "@/hooks/use-require-role";
 
 interface PaymentMethodAdmin {
   id: string;
@@ -57,6 +58,7 @@ const GROUP_LABELS: Record<string, string> = {
 };
 
 export default function AdminPaymentsPage() {
+  const { ready, allowed } = useRequireRole("OWNER", "ADMIN");
   const [methods, setMethods] = useState<PaymentMethodAdmin[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -122,6 +124,8 @@ export default function AdminPaymentsPage() {
     acc[group].push(m);
     return acc;
   }, {});
+
+  if (!ready || !allowed) return null;
 
   return (
     <div className="space-y-4">

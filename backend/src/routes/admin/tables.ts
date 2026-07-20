@@ -3,8 +3,10 @@ import { prisma } from "../../lib/prisma.js";
 import { success, error } from "../../lib/response.js";
 import { tableSchema } from "../../lib/validators.js";
 import QRCode from "qrcode";
+import { requireRole } from "../../lib/auth.js";
 
 const tableRoutes = new Hono();
+tableRoutes.use("*", requireRole("OWNER", "ADMIN"));
 
 tableRoutes.get("/", async (c) => {
   const tables = await prisma.table.findMany({

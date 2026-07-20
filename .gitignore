@@ -31,3 +31,18 @@ backend/prisma/migrations/
 # Misc
 *.log
 *.tsbuildinfo
+.vercel
+
+# Graphify knowledge graph (regenerable via `graphify update .`)
+graphify-out/
+
+# Local scratch / temp artifacts
+frontend/tmp_admin.html
+.pr-body.txt
+
+# Supabase CLI local linkage (project ref, per-machine)
+supabase/.temp/
+
+# Local image dumps (root-level, not app assets)
+banner.png
+bunga bakung.jpg

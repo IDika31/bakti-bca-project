@@ -17,6 +17,7 @@ import paymentRoutes from "./routes/admin/payments.js";
 import dashboardRoutes from "./routes/admin/dashboard.js";
 import reportRoutes from "./routes/admin/reports.js";
 import uploadRoutes from "./routes/admin/upload.js";
+import userRoutes from "./routes/admin/users.js";
 
 const app = new Hono();
 
@@ -60,6 +61,7 @@ admin.route("/payments", paymentRoutes);
 admin.route("/dashboard", dashboardRoutes);
 admin.route("/reports", reportRoutes);
 admin.route("/upload", uploadRoutes);
+admin.route("/users", userRoutes);
 
 app.route("/api/admin", admin);
 

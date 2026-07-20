@@ -145,6 +145,16 @@ export interface ApiResponse<T> {
   error?: string;
 }
 
+export type AdminRole = "OWNER" | "ADMIN" | "CASHIER";
+
+export interface AdminUser {
+  id: string;
+  username: string;
+  name: string;
+  role: AdminRole;
+  isActive?: boolean;
+}
+
 export interface PaginatedResponse<T> {
   success: boolean;
   data: T[];

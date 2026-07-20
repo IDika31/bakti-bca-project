@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { prisma } from "../../lib/prisma.js";
 import { success, error, paginated } from "../../lib/response.js";
-import { orderStatusUpdateSchema } from "../../lib/validators.js";
+import { orderStatusUpdateSchema, cashierPaySchema } from "../../lib/validators.js";
 
 const orderRoutes = new Hono();
 
@@ -112,13 +112,40 @@ orderRoutes.patch("/:id", async (c) => {
   return success(c, updated);
 });
 
-// PATCH /admin/orders/:id/pay — mark cashier order as paid
+// PATCH /admin/orders/:id/pay — mark cashier order as paid (CASH or QRIS).
+// Records a Transaction row so reports can split revenue by settlement method.
+// Orders already paid via Tripay callback have their transaction created at
+// checkout; we only create one here for manual cashier settlement.
 orderRoutes.patch("/:id/pay", async (c) => {
   const id = c.req.param("id");
+  const body = await c.req.json().catch(() => ({}));
+  const parsed = cashierPaySchema.safeParse(body);
+  if (!parsed.success) {
+    return error(c, "Metode pembayaran wajib diisi (CASH atau QRIS)", 400);
+  }
+  const method = parsed.data.method;
 
   const order = await prisma.order.findUnique({ where: { id } });
   if (!order) return error(c, "Pesanan tidak ditemukan", 404);
   if (order.paymentStatus === "PAID") return error(c, "Pesanan sudah dibayar", 400);
+
+  const now = new Date();
+
+  // Upsert a PAID transaction tagged with the settlement method. Use upsert
+  // so a re-call after a partial failure doesn't duplicate; orderId is unique.
+  await prisma.transaction.upsert({
+    where: { orderId: id },
+    update: { paymentMethod: method, status: "PAID", paidAt: now },
+    create: {
+      orderId: id,
+      merchantRef: order.orderNumber,
+      paymentMethod: method,
+      amount: order.grandTotal,
+      status: "PAID",
+      paidAt: now,
+      expiredTime: now,
+    },
+  });
 
   const updated = await prisma.order.update({
     where: { id },
@@ -126,6 +153,7 @@ orderRoutes.patch("/:id/pay", async (c) => {
       paymentStatus: "PAID",
       orderStatus: order.orderStatus === "PENDING" ? "CONFIRMED" : order.orderStatus,
     },
+    include: { transaction: true },
   });
 
   return success(c, updated);

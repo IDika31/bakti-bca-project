@@ -15,6 +15,7 @@ import { formatCurrency } from "@/lib/format";
 import { toast } from "sonner";
 import { ConfirmDialog, useConfirmDialog } from "@/components/ui/confirm-dialog";
 import type { ApiResponse, PaginatedResponse, Category } from "@/types";
+import { useRequireRole } from "@/hooks/use-require-role";
 
 interface AddonAdmin {
   id: string;
@@ -37,6 +38,7 @@ interface MenuItemAdmin {
 type Scope = "menu" | "category";
 
 export default function AdminAddonsPage() {
+  const { ready, allowed } = useRequireRole("OWNER", "ADMIN");
   const [addons, setAddons] = useState<AddonAdmin[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItemAdmin[]>([]);
@@ -69,7 +71,21 @@ export default function AdminAddonsPage() {
     setMenuItems(menuRes.data);
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const [addonRes, catRes, menuRes] = await Promise.all([
+        api.get<ApiResponse<AddonAdmin[]>>("/api/admin/addons", { token }),
+        api.get<ApiResponse<Category[]>>("/api/admin/categories", { token }),
+        api.get<PaginatedResponse<MenuItemAdmin>>("/api/admin/menu?limit=200", { token }),
+      ]);
+      if (cancelled) return;
+      setAddons(addonRes.data);
+      setCategories(catRes.data);
+      setMenuItems(menuRes.data);
+    })();
+    return () => { cancelled = true; };
+  }, [token]);
 
   const filtered = addons.filter((a) => {
     if (scopeFilter === "ALL") return true;
@@ -164,6 +180,8 @@ export default function AdminAddonsPage() {
     fetchData();
   };
 
+  if (!ready || !allowed) return null;
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -195,7 +213,7 @@ export default function AdminAddonsPage() {
         {filtered.length === 0 ? (
           <Card>
             <CardContent className="p-6 text-center text-sm text-muted-foreground">
-              Belum ada addon. Klik "Tambah Addon" untuk membuat.
+              Belum ada addon. Klik &ldquo;Tambah Addon&rdquo; untuk membuat.
             </CardContent>
           </Card>
         ) : (

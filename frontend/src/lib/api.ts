@@ -1,3 +1,5 @@
+import { clearAdminSession } from "@/lib/auth";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
 
 export const API_BASE = API_URL;
@@ -35,8 +37,7 @@ async function request<T>(path: string, options: ApiOptions = {}): Promise<T> {
 
   if (!res.ok) {
     if (res.status === 401 && typeof window !== "undefined") {
-      localStorage.removeItem("admin-token");
-      localStorage.removeItem("admin-user");
+      clearAdminSession();
       window.location.href = "/admin/login";
     }
     throw new Error(data.error || `Request failed: ${res.status}`);
