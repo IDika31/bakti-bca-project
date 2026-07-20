@@ -77,6 +77,8 @@ export default function MenuPage() {
   // Active-tab-on-scroll: highlight the section currently in view.
   useEffect(() => {
     if (grouped.length === 0) return;
+    // Default to first category until scroll settles.
+    setActiveCat((prev) => prev ?? grouped[0].category.id);
     const observer = new IntersectionObserver(
       (entries) => {
         // Pick the topmost intersecting section.
