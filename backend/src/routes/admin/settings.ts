@@ -7,6 +7,7 @@ import {
   operatingHoursSchema,
   tripayConfigSchema,
 } from "../../lib/validators.js";
+import { deleteImageIfUnused } from "../../lib/storage-cleanup.js";
 
 const settingsRoutes = new Hono();
 
@@ -26,11 +27,27 @@ settingsRoutes.put("/profile", async (c) => {
     return error(c, `Data tidak valid — ${detail}`, 400);
   }
 
+  // Empty string = "clear image". Normalize to null so we store NULL.
+  const data = { ...parsed.data };
+  if (data.logoUrl === "") data.logoUrl = null;
+  if (data.bannerUrl === "") data.bannerUrl = null;
+
+  const existing = await prisma.restaurantProfile.findUnique({ where: { id: "default" } });
+  const oldLogo = existing?.logoUrl ?? null;
+  const oldBanner = existing?.bannerUrl ?? null;
+  const newLogo = data.logoUrl === undefined ? oldLogo : data.logoUrl;
+  const newBanner = data.bannerUrl === undefined ? oldBanner : data.bannerUrl;
+
   const profile = await prisma.restaurantProfile.upsert({
     where: { id: "default" },
-    update: parsed.data,
-    create: { id: "default", ...parsed.data },
+    update: data,
+    create: { id: "default", ...data },
   });
+
+  // Best-effort cleanup of replaced/cleared logo + banner.
+  if (oldLogo && oldLogo !== newLogo) await deleteImageIfUnused(oldLogo);
+  if (oldBanner && oldBanner !== newBanner) await deleteImageIfUnused(oldBanner);
+
   return success(c, profile);
 });
 
