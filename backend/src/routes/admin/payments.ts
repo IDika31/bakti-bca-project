@@ -2,24 +2,30 @@ import { Hono } from "hono";
 import { prisma } from "../../lib/prisma.js";
 import { success, error } from "../../lib/response.js";
 import { syncPaymentChannels } from "../../lib/tripay.js";
+import { requireRole } from "../../lib/auth.js";
 
 const paymentRoutes = new Hono();
 
-paymentRoutes.get("/", async (c) => {
+// Cashier endpoints (manual cash payment) — kasir, admin, owner all allowed.
+const cashGuard = requireRole("OWNER", "ADMIN", "CASHIER");
+// Payment management + Tripay sync — admin + owner only (kasir cannot see all methods).
+const mgrGuard = requireRole("OWNER", "ADMIN");
+
+paymentRoutes.get("/", mgrGuard, async (c) => {
   const methods = await prisma.paymentMethod.findMany({
     orderBy: [{ groupName: "asc" }, { name: "asc" }],
   });
   return success(c, methods);
 });
 
-paymentRoutes.get("/cashier", async (c) => {
+paymentRoutes.get("/cashier", cashGuard, async (c) => {
   const method = await prisma.paymentMethod.findUnique({
     where: { code: "CASHIER" },
   });
   return success(c, method);
 });
 
-paymentRoutes.put("/cashier", async (c) => {
+paymentRoutes.put("/cashier", cashGuard, async (c) => {
   const { isShown } = await c.req.json();
   const method = await prisma.paymentMethod.upsert({
     where: { code: "CASHIER" },
@@ -36,7 +42,7 @@ paymentRoutes.put("/cashier", async (c) => {
   return success(c, method);
 });
 
-paymentRoutes.post("/sync", async (c) => {
+paymentRoutes.post("/sync", mgrGuard, async (c) => {
   try {
     const count = await syncPaymentChannels();
     return success(c, { synced: count });
@@ -45,7 +51,7 @@ paymentRoutes.post("/sync", async (c) => {
   }
 });
 
-paymentRoutes.patch("/:id", async (c) => {
+paymentRoutes.patch("/:id", mgrGuard, async (c) => {
   const id = c.req.param("id");
   const { isShown } = await c.req.json();
 

@@ -2,8 +2,10 @@ import { Hono } from "hono";
 import { prisma } from "../../lib/prisma.js";
 import { success, error } from "../../lib/response.js";
 import { format, startOfDay, endOfDay, subDays } from "date-fns";
+import { requireRole } from "../../lib/auth.js";
 
 const reportRoutes = new Hono();
+reportRoutes.use("*", requireRole("OWNER", "ADMIN"));
 
 // GET /admin/reports?from=YYYY-MM-DD&to=YYYY-MM-DD&groupBy=day|week|month
 reportRoutes.get("/", async (c) => {

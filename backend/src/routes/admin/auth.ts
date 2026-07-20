@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { prisma } from "../../lib/prisma.js";
-import { signToken } from "../../lib/auth.js";
+import { signToken, authMiddleware, type AuthUser } from "../../lib/auth.js";
 import { success, error } from "../../lib/response.js";
 import { loginSchema } from "../../lib/validators.js";
 
@@ -38,6 +38,17 @@ authRoutes.post("/login", async (c) => {
     token,
     user: { id: user.id, username: user.username, name: user.name, role: user.role },
   });
+});
+
+// GET /admin/me — current user profile from token (authoritative role check).
+authRoutes.get("/me", authMiddleware, async (c) => {
+  const me = c.get("user") as AuthUser;
+  const user = await prisma.adminUser.findUnique({
+    where: { id: me.id },
+    select: { id: true, username: true, name: true, role: true, isActive: true },
+  });
+  if (!user) return error(c, "User tidak ditemukan", 404);
+  return success(c, user);
 });
 
 export default authRoutes;

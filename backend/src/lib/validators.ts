@@ -121,3 +121,28 @@ export const orderStatusUpdateSchema = z.object({
     "CANCELLED",
   ]),
 });
+
+// Manual cashier settlement: which till the cash went into.
+export const cashierPaySchema = z.object({
+  method: z.enum(["CASH", "QRIS"]),
+});
+
+export const adminRoleSchema = z.enum(["OWNER", "ADMIN", "CASHIER"]);
+
+export const createUserSchema = z.object({
+  username: z
+    .string()
+    .min(3)
+    .max(50)
+    .regex(/^[a-zA-Z0-9_.-]+$/, "Hanya huruf, angka, _, ., -"),
+  password: z.string().min(6).max(100),
+  name: z.string().min(1).max(100),
+  role: adminRoleSchema,
+});
+
+export const updateUserSchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  role: adminRoleSchema.optional(),
+  isActive: z.boolean().optional(),
+  password: z.string().min(6).max(100).optional(),
+});

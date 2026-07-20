@@ -16,6 +16,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { api, resolveImageUrl } from "@/lib/api";
 import { toast } from "sonner";
 import type { ApiResponse } from "@/types";
+import { useRequireRole } from "@/hooks/use-require-role";
 
 function PasswordInput({
   value,
@@ -189,6 +190,7 @@ export default function AdminSettingsPage() {
 }
 
 function SettingsContent() {
+  const { ready, allowed } = useRequireRole("OWNER");
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialTab = searchParams.get("tab") || "profile";
@@ -294,6 +296,8 @@ function SettingsContent() {
       toast.success("Konfigurasi Tripay disimpan");
     } catch (err) { toast.error(err instanceof Error ? err.message : "Gagal menyimpan"); }
   };
+
+  if (!ready || !allowed) return null;
 
   if (loading) {
     return <Skeleton className="h-96" />;

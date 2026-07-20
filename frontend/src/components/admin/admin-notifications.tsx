@@ -2,46 +2,117 @@
 
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Bell, BellOff } from "lucide-react";
+import { Bell, BellOff, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabase";
+import {
+  isPrinterConnected,
+  pairPrinter,
+  reconnectPrinter,
+  printReceiptAuto,
+  type ReceiptData,
+} from "@/lib/bluetooth-print";
+import { api } from "@/lib/api";
 import { toast } from "sonner";
+import type { ApiResponse } from "@/types";
 
 const SOUND_KEY = "admin-sound-enabled";
 const BROWSER_KEY = "admin-browser-notif";
 
+// Loud, persistent alert: a rising 4-beep two-tone burst on a square wave
+// (full gain) played TWICE so it cuts through a noisy kitchen, plus a
+// vibration pattern on supported devices. ~9s total.
 function playNotificationSound() {
   try {
     const ctx = new AudioContext();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.type = "sine";
-    gain.gain.setValueAtTime(0.3, ctx.currentTime);
-    osc.frequency.setValueAtTime(880, ctx.currentTime);
-    osc.frequency.setValueAtTime(1174.66, ctx.currentTime + 0.15);
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.4);
-    osc.onended = () => ctx.close();
+    if (ctx.state === "suspended") void ctx.resume();
+
+    const master = ctx.createGain();
+    master.gain.value = 1.0; // max gain — loud
+    master.connect(ctx.destination);
+
+    const beep = (startAt: number, freqA: number, freqB: number) => {
+      const osc = ctx.createOscillator();
+      const env = ctx.createGain();
+      osc.connect(env);
+      env.connect(master);
+      osc.type = "square"; // brighter, harsher — easier to hear over noise
+      osc.frequency.setValueAtTime(freqA, startAt);
+      osc.frequency.setValueAtTime(freqB, startAt + 0.12);
+      env.gain.setValueAtTime(0.0001, startAt);
+      env.gain.exponentialRampToValueAtTime(1.0, startAt + 0.02);
+      env.gain.setValueAtTime(1.0, startAt + 0.38);
+      env.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.5);
+      osc.start(startAt);
+      osc.stop(startAt + 0.52);
+    };
+
+    // One rising 4-beep burst (~2.3s). Repeat it twice with a short gap.
+    const burst = (offset: number) => {
+      beep(offset, 880, 1174.66);           // beep 1
+      beep(offset + 0.6, 880, 1174.66);     // beep 2
+      beep(offset + 1.2, 988, 1318.51);     // beep 3 (higher)
+      beep(offset + 1.8, 1174.66, 1567.98); // beep 4 (highest, most urgent)
+    };
+
+    const t = ctx.currentTime;
+    burst(t);        // first burst
+    burst(t + 2.6);  // second burst — repeats so it's harder to miss
+
+    const totalMs = (2.6 + 1.8 + 0.52) * 1000 + 200;
+    window.setTimeout(() => { void ctx.close(); }, totalMs);
   } catch {}
+
+  // Vibrate on supported devices (Android/Chrome). Pattern: two long buzzes.
+  try {
+    if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+      navigator.vibrate([400, 120, 400, 120, 700]);
+    }
+  } catch {}
+}
+
+// Flash the browser tab title until the window is focused, so a new order is
+// visible even when the admin tab is in the background. Cleans up on focus.
+let titleFlashTimer: ReturnType<typeof setInterval> | null = null;
+let originalTitle = "";
+function flashTabTitle(message: string) {
+  if (typeof document === "undefined") return;
+  if (!originalTitle) originalTitle = document.title;
+  if (titleFlashTimer) clearInterval(titleFlashTimer);
+  let toggle = false;
+  titleFlashTimer = setInterval(() => {
+    document.title = toggle ? originalTitle : message;
+    toggle = !toggle;
+  }, 800);
+  const stop = () => {
+    if (titleFlashTimer) { clearInterval(titleFlashTimer); titleFlashTimer = null; }
+    document.title = originalTitle;
+    window.removeEventListener("focus", stop);
+    window.removeEventListener("visibilitychange", onVis);
+  };
+  const onVis = () => { if (document.visibilityState === "visible") stop(); };
+  window.addEventListener("focus", stop);
+  window.addEventListener("visibilitychange", onVis);
 }
 
 interface NotifCtxValue {
   unreadCount: number;
   soundEnabled: boolean;
   browserEnabled: boolean;
+  printerConnected: boolean;
   toggleSound: () => void;
   toggleBrowser: () => Promise<void>;
+  pairPrinter: () => Promise<void>;
 }
 
 const NotifCtx = createContext<NotifCtxValue>({
   unreadCount: 0,
   soundEnabled: true,
   browserEnabled: false,
+  printerConnected: false,
   toggleSound: () => {},
   toggleBrowser: async () => {},
+  pairPrinter: async () => {},
 });
 
 export function useAdminNotifications() {
@@ -54,6 +125,7 @@ export function AdminNotificationsProvider({ children }: { children: React.React
   const [unreadCount, setUnreadCount] = useState(0);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [browserEnabled, setBrowserEnabled] = useState(false);
+  const [printerConnected, setPrinterConnected] = useState(false);
   const soundRef = useRef(true);
   const browserRef = useRef(false);
   const pathnameRef = useRef(pathname);
@@ -66,6 +138,8 @@ export function AdminNotificationsProvider({ children }: { children: React.React
     setBrowserEnabled(b);
     soundRef.current = s;
     browserRef.current = b;
+    // Silently reconnect to a previously-paired Bluetooth printer (no prompt).
+    reconnectPrinter().then(setPrinterConnected);
   }, []);
 
   useEffect(() => { soundRef.current = soundEnabled; }, [soundEnabled]);
@@ -91,6 +165,7 @@ export function AdminNotificationsProvider({ children }: { children: React.React
             setUnreadCount((c) => c + 1);
           }
           if (soundRef.current) playNotificationSound();
+          flashTabTitle(`🔔 PESANAN BARU #${orderNumber}`);
           toast.info(`Pesanan baru: #${orderNumber}`, {
             action: orderId
               ? {
@@ -109,6 +184,9 @@ export function AdminNotificationsProvider({ children }: { children: React.React
               if (orderId) router.push(`/admin/orders?highlight=${orderId}`);
             };
           }
+          // Auto-print the receipt if a Bluetooth printer is already connected.
+          // Silent (no prompt) — only fires when paired earlier in the session.
+          if (orderId) void autoPrintNewOrder(orderId);
         }
       )
       .subscribe();
@@ -148,17 +226,78 @@ export function AdminNotificationsProvider({ children }: { children: React.React
     }
   };
 
+  // Fetch the full order + print its receipt to the connected Bluetooth printer.
+  // Best-effort + silent: only runs when a printer is already paired this session.
+  const autoPrintNewOrder = async (orderId: string) => {
+    if (!isPrinterConnected()) return;
+    try {
+      const token = localStorage.getItem("admin-token") || "";
+      const res = await api.get<
+        ApiResponse<{
+          orderNumber: string;
+          orderType: string;
+          customerName: string | null;
+          createdAt: string;
+          subtotal: number;
+          serviceAmount: number;
+          taxAmount: number;
+          grandTotal: number;
+          table: { number: number; name: string | null } | null;
+          items: Array<{ quantity: number; price: number; menuItem: { name: string } }>;
+          transaction: { paymentMethod: string | null } | null;
+        }>
+      >(`/api/admin/orders/${orderId}`, { token });
+      const o = res.data;
+      if (!o) return;
+      const receipt: ReceiptData = {
+        orderNumber: o.orderNumber,
+        orderType: o.orderType as "DINE_IN" | "TAKE_AWAY",
+        tableLabel: o.table ? o.table.name || `Meja ${o.table.number}` : null,
+        customerName: o.customerName,
+        createdAt: o.createdAt,
+        items: o.items.map((it) => ({ name: it.menuItem.name, qty: it.quantity, price: it.price })),
+        subtotal: o.subtotal,
+        serviceAmount: o.serviceAmount,
+        taxAmount: o.taxAmount,
+        grandTotal: o.grandTotal,
+        paymentMethod: o.transaction?.paymentMethod ?? null,
+      };
+      await printReceiptAuto(receipt);
+    } catch {
+      // silent — auto-print must not interrupt the operator
+    }
+  };
+
+  const handlePairPrinter = async () => {
+    const ok = await pairPrinter();
+    setPrinterConnected(ok);
+    toast[ok ? "success" : "error"](
+      ok ? "Printer Bluetooth terhubung — struk akan cetak otomatis saat pesanan baru" : "Gagal menyambung printer"
+    );
+  };
+
   return (
-    <NotifCtx.Provider value={{ unreadCount, soundEnabled, browserEnabled, toggleSound, toggleBrowser }}>
+    <NotifCtx.Provider
+      value={{ unreadCount, soundEnabled, browserEnabled, printerConnected, toggleSound, toggleBrowser, pairPrinter: handlePairPrinter }}
+    >
       {children}
     </NotifCtx.Provider>
   );
 }
 
 export function AdminNotifications() {
-  const { soundEnabled, browserEnabled, toggleSound, toggleBrowser } = useAdminNotifications();
+  const { soundEnabled, browserEnabled, printerConnected, toggleSound, toggleBrowser, pairPrinter } = useAdminNotifications();
   return (
     <div className="flex items-center gap-1">
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={pairPrinter}
+        title={printerConnected ? "Printer Bluetooth terhubung" : "Sambungkan printer Bluetooth"}
+        className={printerConnected ? "text-emerald-600" : ""}
+      >
+        <Printer className="h-4 w-4" />
+      </Button>
       <Button
         variant="ghost"
         size="icon"

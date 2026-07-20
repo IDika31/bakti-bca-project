@@ -2,8 +2,10 @@ import { Hono } from "hono";
 import { prisma } from "../../lib/prisma.js";
 import { success, error } from "../../lib/response.js";
 import { categorySchema } from "../../lib/validators.js";
+import { requireRole } from "../../lib/auth.js";
 
 const categoryRoutes = new Hono();
+categoryRoutes.use("*", requireRole("OWNER", "ADMIN"));
 
 categoryRoutes.get("/", async (c) => {
   const categories = await prisma.category.findMany({

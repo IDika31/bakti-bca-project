@@ -8,8 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
+import { setAdminSession } from "@/lib/auth";
 import { toast } from "sonner";
-import type { ApiResponse } from "@/types";
+import type { ApiResponse, AdminUser } from "@/types";
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -21,12 +22,11 @@ export default function AdminLoginPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await api.post<ApiResponse<{ token: string; user: { name: string } }>>(
+      const res = await api.post<ApiResponse<{ token: string; user: AdminUser }>>(
         "/api/admin/login",
         { username, password }
       );
-      localStorage.setItem("admin-token", res.data.token);
-      localStorage.setItem("admin-user", JSON.stringify(res.data.user));
+      setAdminSession(res.data.token, res.data.user);
       router.push("/admin");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Login gagal");

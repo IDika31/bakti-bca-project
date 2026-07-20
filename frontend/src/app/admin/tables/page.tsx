@@ -13,6 +13,7 @@ import { api } from "@/lib/api";
 import { toast } from "sonner";
 import { ConfirmDialog, useConfirmDialog } from "@/components/ui/confirm-dialog";
 import type { ApiResponse } from "@/types";
+import { useRequireRole } from "@/hooks/use-require-role";
 
 // HTML entity map for safe interpolation into the print HTML. We use
 // fromCharCode so the source stays pure ASCII and avoids any tool mangling.
@@ -51,6 +52,7 @@ interface RestaurantProfile {
 type FormState = { number: number; name: string };
 
 export default function AdminTablesPage() {
+  const { ready, allowed } = useRequireRole("OWNER", "ADMIN");
   const [tables, setTables] = useState<TableAdmin[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [qrDialog, setQrDialog] = useState<QrData | null>(null);
@@ -347,6 +349,8 @@ ${pages.join("\n")}
     a.click();
     document.body.removeChild(a);
   };
+
+  if (!ready || !allowed) return null;
 
   return (
     <div className="space-y-4">

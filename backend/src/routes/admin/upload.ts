@@ -3,8 +3,10 @@ import { success, error } from "../../lib/response.js";
 import { getSupabase, STORAGE_BUCKET } from "../../lib/supabase.js";
 import { createHash } from "node:crypto";
 import { extname } from "node:path";
+import { requireRole } from "../../lib/auth.js";
 
 const uploadRoutes = new Hono();
+uploadRoutes.use("*", requireRole("OWNER", "ADMIN"));
 
 const MAX_SIZE = 5 * 1024 * 1024; // 5 MB
 const ALLOWED_MIME = new Set([

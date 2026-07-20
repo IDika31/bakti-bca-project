@@ -14,6 +14,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { api, resolveImageUrl } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
 import { useDebounce } from "@/hooks/use-debounce";
+import { useRequireRole } from "@/hooks/use-require-role";
 import { toast } from "sonner";
 import type { ApiResponse, PaginatedResponse, Category } from "@/types";
 
@@ -29,6 +30,7 @@ interface MenuItemAdmin {
 }
 
 export default function AdminMenuPage() {
+  const { ready, allowed } = useRequireRole("OWNER", "ADMIN");
   const [items, setItems] = useState<MenuItemAdmin[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -155,6 +157,8 @@ export default function AdminMenuPage() {
     await api.patch(`/api/admin/menu/${id}/availability`, { isAvailable }, { token });
     fetchMenu();
   };
+
+  if (!ready || !allowed) return null;
 
   return (
     <div className="space-y-4">

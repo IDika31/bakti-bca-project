@@ -15,9 +15,11 @@ function createPrismaClient() {
   return new PrismaClient({ adapter });
 }
 
-const globalForPrisma = globalThis as unknown as {
+interface GlobalForPrisma {
   prisma: PrismaClient | undefined;
-};
+}
+
+const globalForPrisma = globalThis as unknown as GlobalForPrisma;
 
 export const prisma = globalForPrisma.prisma ?? createPrismaClient();
 

@@ -176,10 +176,10 @@ export default function AdminOrdersPage() {
     }
   };
 
-  const markAsPaid = async (orderId: string) => {
+  const markAsPaid = async (orderId: string, method: "CASH" | "QRIS") => {
     try {
-      await api.patch(`/api/admin/orders/${orderId}/pay`, {}, { token });
-      toast.success("Pesanan ditandai lunas");
+      await api.patch(`/api/admin/orders/${orderId}/pay`, { method }, { token });
+      toast.success(`Pesanan ditandai lunas (${method})`);
       fetchOrders();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Gagal update pembayaran");
@@ -271,6 +271,24 @@ export default function AdminOrdersPage() {
                           Belum Bayar
                         </Badge>
                       )}
+                      {order.paymentStatus === "PAID" && order.transaction?.paymentMethod && (
+                        <Badge
+                          variant="outline"
+                          className={`text-xs ${
+                            order.transaction.paymentMethod === "CASH"
+                              ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                              : order.transaction.paymentMethod === "QRIS"
+                              ? "border-sky-300 bg-sky-50 text-sky-700"
+                              : ""
+                          }`}
+                        >
+                          {order.transaction.paymentMethod === "CASH"
+                            ? "Tunai"
+                            : order.transaction.paymentMethod === "QRIS"
+                            ? "QRIS"
+                            : order.transaction.paymentMethod}
+                        </Badge>
+                      )}
                     </div>
                   </button>
 
@@ -282,15 +300,35 @@ export default function AdminOrdersPage() {
                     {order.items.map((item) => `${item.quantity}x ${item.menuItem.name}`).join(", ")}
                   </button>
 
-                  {order.paymentStatus === "UNPAID" && !["COMPLETED", "CANCELLED"].includes(order.orderStatus) && (
+                  {!["COMPLETED", "CANCELLED"].includes(order.orderStatus) && (
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <Button size="sm" className="bg-amber-600 hover:bg-amber-700" onClick={() => markAsPaid(order.id)}>
-                        Tandai Lunas
-                      </Button>
-                      <Button size="sm" className="gap-1 bg-green-600 hover:bg-green-700" onClick={() => completeOrder(order.id)}>
-                        <CheckCircle2 className="h-3.5 w-3.5" />
-                        Lunas & Selesaikan
-                      </Button>
+                      {(order.orderStatus === "PENDING" || order.orderStatus === "CONFIRMED") && (
+                        <Button size="sm" onClick={() => updateStatus(order.id, "PREPARING")}>
+                          Proses
+                        </Button>
+                      )}
+                      {order.orderStatus === "PREPARING" && (
+                        <Button size="sm" onClick={() => updateStatus(order.id, "READY")}>
+                          Siap
+                        </Button>
+                      )}
+                      {order.orderStatus === "READY" && order.paymentStatus === "UNPAID" && (
+                        <>
+                          <span className="self-center text-xs text-muted-foreground">Tandai lunas:</span>
+                          <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => markAsPaid(order.id, "CASH")}>
+                            Tunai (Cash)
+                          </Button>
+                          <Button size="sm" className="bg-sky-600 hover:bg-sky-700" onClick={() => markAsPaid(order.id, "QRIS")}>
+                            QRIS
+                          </Button>
+                        </>
+                      )}
+                      {order.orderStatus === "READY" && order.paymentStatus === "PAID" && (
+                        <Button size="sm" className="gap-1 bg-green-600 hover:bg-green-700" onClick={() => completeOrder(order.id)}>
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          Selesai
+                        </Button>
+                      )}
                       <Button size="sm" variant="destructive" onClick={() => { setCancelTarget(order.id); setCancelReason(""); }}>
                         Batal
                       </Button>
@@ -303,35 +341,6 @@ export default function AdminOrdersPage() {
                       Lihat detail
                     </Button>
                   </div>
-
-                  {order.paymentStatus === "PAID" && !["COMPLETED", "CANCELLED"].includes(order.orderStatus) && (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {order.orderStatus === "CONFIRMED" && (
-                        <Button size="sm" onClick={() => updateStatus(order.id, "PREPARING")}>
-                          Proses
-                        </Button>
-                      )}
-                      {order.orderStatus === "PREPARING" && (
-                        <Button size="sm" onClick={() => updateStatus(order.id, "READY")}>
-                          Siap
-                        </Button>
-                      )}
-                      {order.orderStatus === "READY" && (
-                        <Button size="sm" onClick={() => updateStatus(order.id, "COMPLETED")}>
-                          Selesai
-                        </Button>
-                      )}
-                      {order.orderStatus !== "READY" && (
-                        <Button size="sm" variant="outline" className="gap-1 border-green-300 text-green-700 hover:bg-green-50" onClick={() => completeOrder(order.id)}>
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                          Selesaikan
-                        </Button>
-                      )}
-                      <Button size="sm" variant="destructive" onClick={() => { setCancelTarget(order.id); setCancelReason(""); }}>
-                        Batal
-                      </Button>
-                    </div>
-                  )}
                 </CardContent>
               </Card>
             ))}

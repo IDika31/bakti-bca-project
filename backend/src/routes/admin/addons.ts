@@ -2,8 +2,10 @@ import { Hono } from "hono";
 import { prisma } from "../../lib/prisma.js";
 import { success, error } from "../../lib/response.js";
 import { addonSchema } from "../../lib/validators.js";
+import { requireRole } from "../../lib/auth.js";
 
 const addonRoutes = new Hono();
+addonRoutes.use("*", requireRole("OWNER", "ADMIN"));
 
 // GET /admin/addons?menuItemId=ID | categoryId=ID | scope=menu|category
 addonRoutes.get("/", async (c) => {

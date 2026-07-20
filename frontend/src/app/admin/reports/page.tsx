@@ -31,6 +31,7 @@ import { api } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
 import { toast } from "sonner";
 import type { ApiResponse } from "@/types";
+import { useRequireRole } from "@/hooks/use-require-role";
 
 interface DailyData {
   date: string;
@@ -96,6 +97,10 @@ function getPresetRange(key: PresetKey): { start: string; end: string } {
 }
 
 function DailyChart({ data }: { data: DailyData[] }) {
+  // recharts ResponsiveContainer needs a measured client width; gate on mount
+  // to avoid a zero-size first paint (and the SSR/no-window case).
+  const [mounted] = useState(() => typeof window !== "undefined");
+
   if (data.length === 0) {
     return (
       <div className="flex flex-col items-center py-10 text-center">
@@ -115,46 +120,48 @@ function DailyChart({ data }: { data: DailyData[] }) {
 
   return (
     <div className="h-72 w-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-          <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-          <XAxis
-            dataKey="label"
-            tick={{ fontSize: 11 }}
-            className="fill-muted-foreground"
-          />
-          <YAxis
-            tick={{ fontSize: 11 }}
-            className="fill-muted-foreground"
-            tickFormatter={(v) => {
-              if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}jt`;
-              if (v >= 1_000) return `${(v / 1_000).toFixed(0)}rb`;
-              return String(v);
-            }}
-          />
-          <Tooltip
-            contentStyle={{
-              borderRadius: 12,
-              border: "1px solid hsl(var(--border))",
-              background: "hsl(var(--background))",
-              fontSize: 12,
-            }}
-            formatter={(value, name) => {
-              const num = Number(value);
-              if (name === "revenue") return [formatCurrency(num), "Pendapatan"];
-              return [String(num), "Pesanan"];
-            }}
-          />
-          <Line
-            type="monotone"
-            dataKey="revenue"
-            stroke="hsl(var(--primary))"
-            strokeWidth={2}
-            dot={{ r: 3 }}
-            activeDot={{ r: 5 }}
-          />
-        </LineChart>
-      </ResponsiveContainer>
+      {mounted && (
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+            <XAxis
+              dataKey="label"
+              tick={{ fontSize: 11 }}
+              className="fill-muted-foreground"
+            />
+            <YAxis
+              tick={{ fontSize: 11 }}
+              className="fill-muted-foreground"
+              tickFormatter={(v) => {
+                if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}jt`;
+                if (v >= 1_000) return `${(v / 1_000).toFixed(0)}rb`;
+                return String(v);
+              }}
+            />
+            <Tooltip
+              contentStyle={{
+                borderRadius: 12,
+                border: "1px solid hsl(var(--border))",
+                background: "hsl(var(--background))",
+                fontSize: 12,
+              }}
+              formatter={(value, name) => {
+                const num = Number(value);
+                if (name === "revenue") return [formatCurrency(num), "Pendapatan"];
+                return [String(num), "Pesanan"];
+              }}
+            />
+            <Line
+              type="monotone"
+              dataKey="revenue"
+              stroke="hsl(var(--primary))"
+              strokeWidth={2}
+              dot={{ r: 3 }}
+              activeDot={{ r: 5 }}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      )}
     </div>
   );
 }
@@ -246,6 +253,7 @@ function MethodBreakdown({ data, total }: { data: PaymentMethodSummary[]; total:
 }
 
 export default function AdminReportsPage() {
+  const { ready, allowed } = useRequireRole("OWNER", "ADMIN");
   const defaults = getDefaultDates();
   const [startDate, setStartDate] = useState(defaults.start);
   const [endDate, setEndDate] = useState(defaults.end);
@@ -291,6 +299,8 @@ export default function AdminReportsPage() {
   useEffect(() => {
     fetchReport();
   }, []);
+
+  if (!ready || !allowed) return null;
 
   const handleExport = async () => {
     try {

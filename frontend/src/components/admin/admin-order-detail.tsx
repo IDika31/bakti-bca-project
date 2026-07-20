@@ -7,7 +7,9 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
 import { formatCurrency, ORDER_STATUS_LABELS, PAYMENT_STATUS_LABELS } from "@/lib/format";
-import { AlertCircle, Clock, MapPin, User, XCircle } from "lucide-react";
+import { printReceipt, type ReceiptData } from "@/lib/bluetooth-print";
+import { AlertCircle, Clock, MapPin, User, XCircle, Printer } from "lucide-react";
+import { toast } from "sonner";
 import type { ApiResponse } from "@/types";
 
 interface OrderItemDetail {
@@ -136,6 +138,29 @@ export function AdminOrderDetail({
 }
 
 function OrderBody({ order }: { order: OrderDetail }) {
+  const handlePrint = async () => {
+    const receipt: ReceiptData = {
+      orderNumber: order.orderNumber,
+      orderType: order.orderType as "DINE_IN" | "TAKE_AWAY",
+      tableLabel: order.table ? order.table.name || `Meja ${order.table.number}` : null,
+      customerName: order.customerName,
+      createdAt: order.createdAt,
+      items: order.items.map((it) => ({
+        name: it.menuItem.name,
+        qty: it.quantity,
+        price: it.price,
+      })),
+      subtotal: order.subtotal,
+      serviceAmount: order.serviceAmount,
+      taxAmount: order.taxAmount,
+      grandTotal: order.grandTotal,
+      paymentMethod: order.transaction?.paymentMethod ?? null,
+    };
+    const result = await printReceipt(receipt);
+    if (result === "failed") toast.error("Gagal mencetak struk");
+    else if (result === "bluetooth") toast.success("Struk dikirim ke printer Bluetooth");
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
@@ -148,6 +173,15 @@ function OrderBody({ order }: { order: OrderDetail }) {
         <Badge variant="outline">
           {order.orderType === "DINE_IN" ? "Dine In" : "Take Away"}
         </Badge>
+        <button
+          type="button"
+          onClick={handlePrint}
+          className="ml-auto inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium hover:bg-muted"
+          title="Cetak struk ke printer Bluetooth (atau dialog browser)"
+        >
+          <Printer className="h-3.5 w-3.5" />
+          Cetak Struk
+        </button>
       </div>
 
       {order.orderStatus === "CANCELLED" && order.cancellationReason && (
