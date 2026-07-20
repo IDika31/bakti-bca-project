@@ -2,8 +2,11 @@ import { Hono } from "hono";
 import { prisma } from "../../lib/prisma.js";
 import { success, error, paginated } from "../../lib/response.js";
 import { orderStatusUpdateSchema, cashierPaySchema } from "../../lib/validators.js";
+import { requireRole } from "../../lib/auth.js";
 
 const orderRoutes = new Hono();
+// All admin roles may read/update orders (cashier marks orders paid + completes them).
+orderRoutes.use("*", requireRole("OWNER", "ADMIN", "CASHIER"));
 
 // GET /admin/orders?status=X&date=YYYY-MM-DD&page=1&limit=20&grouped=true
 orderRoutes.get("/", async (c) => {
