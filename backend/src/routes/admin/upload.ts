@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { success, error } from "../../lib/response.js";
 import { getSupabase, STORAGE_BUCKET } from "../../lib/supabase.js";
-import { randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { extname } from "node:path";
 
 const uploadRoutes = new Hono();
@@ -14,6 +14,19 @@ const ALLOWED_MIME = new Set([
   "image/gif",
 ]);
 const ALLOWED_FOLDERS = new Set(["menu", "logo", "banner", "misc"]);
+
+// Check whether an object already exists at a given path in the bucket.
+// Supabase storage has no HEAD-by-path call, so we list the parent folder and
+// match the exact filename. Returns the matching object name or null.
+async function findExisting(supabase: ReturnType<typeof getSupabase>, folder: string, fileName: string): Promise<string | null> {
+  // search= narrows results server-side; fall back to scanning the page.
+  const { data, error: listErr } = await supabase.storage
+    .from(STORAGE_BUCKET)
+    .list(folder, { search: fileName, limit: 100 });
+  if (listErr || !data) return null;
+  const hit = data.find((o) => o.name === fileName);
+  return hit ? `${folder}/${hit.name}` : null;
+}
 
 // POST /admin/upload/:folder  (folder ∈ menu|logo|banner|misc)
 uploadRoutes.post("/:folder", async (c) => {
@@ -42,9 +55,15 @@ uploadRoutes.post("/:folder", async (c) => {
       : file.type === "image/gif"
       ? ".gif"
       : ".jpg");
-  const objectPath = `${folder}/${randomUUID()}${ext}`;
 
   const buffer = new Uint8Array(await file.arrayBuffer());
+
+  // Content-addressed path: same bytes ⇒ same path. First 16 bytes of the
+  // SHA-256 hex keeps paths short while remaining collision-resistant for a
+  // media bucket. Dedup happens below by checking this path before uploading.
+  const hashHex = createHash("sha256").update(buffer).digest("hex").slice(0, 32);
+  const fileName = `${hashHex}${ext}`;
+  const objectPath = `${folder}/${fileName}`;
 
   const supabase = getSupabase();
 
@@ -60,6 +79,14 @@ uploadRoutes.post("/:folder", async (c) => {
     if (createErr) {
       return error(c, `Bucket tidak bisa dibuat: ${createErr.message}`, 500);
     }
+  }
+
+  // Dedup: if an identical file already exists at this content-addressed path,
+  // reuse it instead of uploading again.
+  const existing = await findExisting(supabase, folder, fileName);
+  if (existing) {
+    const { data: pub } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(existing);
+    return success(c, { url: pub.publicUrl, path: existing, reused: true });
   }
 
   const { error: uploadErr } = await supabase.storage
@@ -78,7 +105,7 @@ uploadRoutes.post("/:folder", async (c) => {
     .from(STORAGE_BUCKET)
     .getPublicUrl(objectPath);
 
-  return success(c, { url: pub.publicUrl, path: objectPath }, 201);
+  return success(c, { url: pub.publicUrl, path: objectPath, reused: false }, 201);
 });
 
 // DELETE /admin/upload  body: { path: "menu/uuid.jpg" }
