@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { wibClock } from "@/lib/time";
+import { witaClock } from "@/lib/time";
 import type { ApiResponse, OperatingHours } from "@/types";
 
 export interface OperatingStatus {
@@ -24,7 +24,7 @@ function parseHM(hm: string): { h: number; m: number } | null {
 }
 
 function computeStatus(hours: OperatingHours[]): OperatingStatus {
-  const clock = wibClock();
+  const clock = witaClock();
   const dow = clock.dayOfWeek;
   const today = hours.find((h) => h.dayOfWeek === dow) ?? null;
 

@@ -1,20 +1,20 @@
-// Restaurant operates on Jakarta time (WIB = UTC+7, no daylight saving).
+// Restaurant operates on Central Indonesia time (WITA = UTC+8, no daylight saving).
 // Vercel serverless runs in UTC, so naive new Date().getHours()/getDay() would
-// compare UTC clock against WIB opening hours and reject valid orders.
-// This helper returns the day-of-week and minute-of-day in Asia/Jakarta.
+// compare UTC clock against WITA opening hours and reject valid orders.
+// This helper returns the day-of-week and minute-of-day in Asia/Makassar.
 
 const WEEKDAY_DOW: Record<string, number> = {
   Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
 };
 
-export interface WibClock {
+export interface WitaClock {
   dayOfWeek: number; // 0=Sunday … 6=Saturday
-  minutes: number;   // minutes since 00:00 in WIB
+  minutes: number;   // minutes since 00:00 in WITA
 }
 
-export function wibClock(now: Date = new Date()): WibClock {
+export function witaClock(now: Date = new Date()): WitaClock {
   const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Jakarta",
+    timeZone: "Asia/Makassar",
     weekday: "short",
     hour: "2-digit",
     hour12: false,
@@ -30,3 +30,4 @@ export function wibClock(now: Date = new Date()): WibClock {
 
   return { dayOfWeek: dow, minutes: hour * 60 + minute };
 }
+

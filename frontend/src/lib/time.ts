@@ -1,5 +1,5 @@
-// Restaurant operates on Jakarta time (WIB = UTC+7, no daylight saving).
-// Compute day-of-week and minute-of-day in Asia/Jakarta regardless of the
+// Restaurant operates on Central Indonesia time (WITA = UTC+8, no daylight saving).
+// Compute day-of-week and minute-of-day in Asia/Makassar regardless of the
 // visitor's device timezone, so the open/closed banner matches what the
 // backend (server-side) computes.
 
@@ -7,14 +7,14 @@ const WEEKDAY_DOW: Record<string, number> = {
   Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
 };
 
-export interface WibClock {
+export interface WitaClock {
   dayOfWeek: number; // 0=Sunday … 6=Saturday
-  minutes: number;   // minutes since 00:00 in WIB
+  minutes: number;   // minutes since 00:00 in WITA
 }
 
-export function wibClock(now: Date = new Date()): WibClock {
+export function witaClock(now: Date = new Date()): WitaClock {
   const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Jakarta",
+    timeZone: "Asia/Makassar",
     weekday: "short",
     hour: "2-digit",
     hour12: false,
