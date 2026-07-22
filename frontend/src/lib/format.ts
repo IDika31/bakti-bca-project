@@ -17,10 +17,10 @@ export function formatDate(date: Date | string): string {
 }
 
 export const ORDER_STATUS_LABELS: Record<string, string> = {
-  PENDING: "Menunggu Pembayaran",
-  CONFIRMED: "Diterima",
+  PLACED: "Pesanan Masuk",
   PREPARING: "Sedang Disiapkan",
   READY: "Siap Diambil",
+  PICKED_UP: "Sudah Diambil",
   COMPLETED: "Selesai",
   CANCELLED: "Dibatalkan",
 };

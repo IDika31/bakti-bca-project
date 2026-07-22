@@ -59,10 +59,10 @@ interface OrderDetail {
 }
 
 const S: Record<string, string> = {
-  PENDING: "bg-slate-100 text-slate-800",
-  CONFIRMED: "bg-blue-100 text-blue-800",
+  PLACED: "bg-slate-100 text-slate-800",
   PREPARING: "bg-amber-100 text-amber-800",
   READY: "bg-purple-100 text-purple-800",
+  PICKED_UP: "bg-sky-100 text-sky-800",
   COMPLETED: "bg-green-100 text-green-800",
   CANCELLED: "bg-red-100 text-red-800",
 };

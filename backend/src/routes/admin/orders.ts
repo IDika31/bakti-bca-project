@@ -154,7 +154,9 @@ orderRoutes.patch("/:id/pay", async (c) => {
     where: { id },
     data: {
       paymentStatus: "PAID",
-      orderStatus: order.orderStatus === "PENDING" ? "CONFIRMED" : order.orderStatus,
+      // Payment no longer drives order status; the flow is
+      // PLACED → PREPARING → READY → PICKED_UP → COMPLETED and payment is
+      // settled at the counter (paymentStatus) independent of that progression.
     },
     include: { transaction: true },
   });
@@ -191,7 +193,9 @@ orderRoutes.patch("/:id/cancel", async (c) => {
   return success(c, updated);
 });
 
-// PATCH /admin/orders/:id/complete — mark as completed (+ paid if unpaid)
+// PATCH /admin/orders/:id/complete — mark as completed. Requires payment first:
+// in the new flow the order is settled (paymentStatus PAID) before it can be
+// completed, so this refuses to complete an unpaid order.
 orderRoutes.patch("/:id/complete", async (c) => {
   const id = c.req.param("id");
 
@@ -199,13 +203,13 @@ orderRoutes.patch("/:id/complete", async (c) => {
   if (!order) return error(c, "Pesanan tidak ditemukan", 404);
   if (order.orderStatus === "COMPLETED") return error(c, "Pesanan sudah selesai", 400);
   if (order.orderStatus === "CANCELLED") return error(c, "Pesanan sudah dibatalkan", 400);
+  if (order.paymentStatus !== "PAID") {
+    return error(c, "Pesanan belum dibayar — tandai lunas dulu sebelum menyelesaikan", 400);
+  }
 
   const updated = await prisma.order.update({
     where: { id },
-    data: {
-      orderStatus: "COMPLETED",
-      paymentStatus: order.paymentStatus === "UNPAID" ? "PAID" : order.paymentStatus,
-    },
+    data: { orderStatus: "COMPLETED" },
   });
 
   return success(c, updated);
