@@ -8,7 +8,7 @@
     },
     "backend": {
       "root": "backend",
-      "entrypoint": "api/[[...path]].ts"
+      "entrypoint": "src/app.ts"
     }
   },
   "rewrites": [
@@ -28,3 +28,4 @@
     }
   ]
 }
+
