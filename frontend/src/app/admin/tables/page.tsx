@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, QrCode, RefreshCw, Pencil, Download, Printer, Loader2 } from "lucide-react";
+import { Plus, QrCode, RefreshCw, Pencil, Download, Printer, Loader2, LockOpen, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -34,6 +34,8 @@ interface TableAdmin {
   name: string | null;
   token: string;
   isActive: boolean;
+  lockedSessionId: string | null;
+  lockedAt: string | null;
 }
 
 interface QrData {
@@ -73,6 +75,14 @@ export default function AdminTablesPage() {
   };
 
   useEffect(() => { fetchData(); }, []);
+
+  // Keep lock badges fresh — a table frees itself when its order completes, and
+  // an admin may want to see that without a manual reload.
+  useEffect(() => {
+    const id = window.setInterval(() => { fetchData(); }, 15_000);
+    return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     api.get<ApiResponse<RestaurantProfile>>("/api/restaurant", { token })
@@ -141,6 +151,18 @@ export default function AdminTablesPage() {
       fetchData();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Gagal regenerate");
+    }
+  };
+
+  const handleUnlock = async (t: TableAdmin) => {
+    try {
+      await api.post(`/api/admin/tables/${t.id}/unlock`, {}, { token });
+      toast.success(`${t.name || `Meja ${t.number}`} dibebaskan`);
+      setTables((prev) =>
+        prev.map((row) => (row.id === t.id ? { ...row, lockedSessionId: null, lockedAt: null } : row))
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Gagal membebaskan meja");
     }
   };
 
@@ -397,13 +419,19 @@ ${pages.join("\n")}
             <CardContent className="p-4">
               <div className="mb-3 flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <p className="text-lg font-bold truncate">
                       {table.name || `Meja ${table.number}`}
                     </p>
                     <Badge variant={table.isActive ? "default" : "secondary"} className="text-[10px]">
                       {table.isActive ? "Aktif" : "Nonaktif"}
                     </Badge>
+                    {table.lockedSessionId && (
+                      <Badge className="gap-1 bg-amber-100 text-[10px] text-amber-700 hover:bg-amber-100">
+                        <Lock className="h-2.5 w-2.5" />
+                        Dipakai
+                      </Badge>
+                    )}
                   </div>
                   <p className="text-xs font-mono text-muted-foreground">
                     Token: ...{table.token.slice(-8)}
@@ -427,6 +455,17 @@ ${pages.join("\n")}
                   <RefreshCw className="h-3 w-3" />
                   Regenerate
                 </Button>
+                {table.lockedSessionId && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1 border-amber-300 text-amber-700 hover:bg-amber-50"
+                    onClick={() => handleUnlock(table)}
+                  >
+                    <LockOpen className="h-3 w-3" />
+                    Bebaskan
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>

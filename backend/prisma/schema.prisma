@@ -145,6 +145,11 @@ model Table {
   token              String    @unique @default(uuid())
   isActive           Boolean   @default(true) @map("is_active")
   tokenRegeneratedAt DateTime? @map("token_regenerated_at")
+  // Device lock: only one device (session) may order from a table at a time.
+  // Claimed when a device scans the QR; released when its order reaches a
+  // terminal state (COMPLETED/CANCELLED), an admin frees it, or it goes stale.
+  lockedSessionId    String?   @map("locked_session_id")
+  lockedAt           DateTime? @map("locked_at")
   createdAt          DateTime  @default(now()) @map("created_at")
   updatedAt          DateTime  @updatedAt @map("updated_at")
   orders             Order[]
