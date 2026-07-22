@@ -90,8 +90,12 @@ export default function AdminDashboardPage() {
     const channel = supabase
       .channel("admin-dashboard-orders")
       .on(
+        // "*" (not just INSERT) so a payment-status flip (PAID via Tripay
+        // callback or the cashier "tandai lunas" button) or a status change
+        // like cancel/complete — both UPDATEs, not INSERTs — also trigger
+        // an instant refresh instead of waiting for the 30s poll.
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "orders" },
+        { event: "*", schema: "public", table: "orders" },
         () => { void fetchData(); }
       )
       .subscribe();

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Download,
   ShoppingBag,
@@ -141,8 +141,8 @@ function DailyChart({ data }: { data: DailyData[] }) {
             <Tooltip
               contentStyle={{
                 borderRadius: 12,
-                border: "1px solid hsl(var(--border))",
-                background: "hsl(var(--background))",
+                border: "1px solid var(--border)",
+                background: "var(--background)",
                 fontSize: 12,
               }}
               formatter={(value, name) => {
@@ -154,7 +154,7 @@ function DailyChart({ data }: { data: DailyData[] }) {
             <Line
               type="monotone"
               dataKey="revenue"
-              stroke="hsl(var(--primary))"
+              stroke="var(--primary)"
               strokeWidth={2}
               dot={{ r: 3 }}
               activeDot={{ r: 5 }}
@@ -177,7 +177,7 @@ function MethodBreakdown({ data, total }: { data: PaymentMethodSummary[]; total:
   }
 
   const CHART_COLORS = [
-    "hsl(var(--primary))",
+    "var(--primary)",
     "#10b981",
     "#f59e0b",
     "#3b82f6",
@@ -215,8 +215,8 @@ function MethodBreakdown({ data, total }: { data: PaymentMethodSummary[]; total:
             <Tooltip
               contentStyle={{
                 borderRadius: 12,
-                border: "1px solid hsl(var(--border))",
-                background: "hsl(var(--background))",
+                border: "1px solid var(--border)",
+                background: "var(--background)",
                 fontSize: 12,
               }}
               formatter={(value) => formatCurrency(Number(value))}
@@ -265,40 +265,59 @@ export default function AdminReportsPage() {
       ? localStorage.getItem("admin-token") || ""
       : "";
 
-  const fetchReport = async (fromOverride?: string, toOverride?: string) => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({
-        from: fromOverride ?? startDate,
-        to: toOverride ?? endDate,
-      });
-      const res = await api.get<ApiResponse<ReportData>>(
-        `/api/admin/reports?${params}`,
-        { token }
-      );
-      setData({
-        daily: res.data?.daily ?? [],
-        byMethod: res.data?.byMethod ?? [],
-        summary: {
-          totalOrders: res.data?.summary?.totalOrders ?? 0,
-          totalRevenue: res.data?.summary?.totalRevenue ?? 0,
-          totalService: res.data?.summary?.totalService ?? 0,
-          totalTax: res.data?.summary?.totalTax ?? 0,
-          dineInCount: res.data?.summary?.dineInCount ?? 0,
-          takeAwayCount: res.data?.summary?.takeAwayCount ?? 0,
-          averageOrder: res.data?.summary?.averageOrder ?? 0,
-        },
-      });
-    } catch {
-      setData(null);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // `silent` skips the loading-skeleton flash for background refreshes
+  // (polling / tab focus) so only the very first load shows the spinner.
+  const fetchReport = useCallback(
+    async (fromOverride?: string, toOverride?: string, silent = false) => {
+      if (!silent) setLoading(true);
+      try {
+        const params = new URLSearchParams({
+          from: fromOverride ?? startDate,
+          to: toOverride ?? endDate,
+        });
+        const res = await api.get<ApiResponse<ReportData>>(
+          `/api/admin/reports?${params}`,
+          { token }
+        );
+        setData({
+          daily: res.data?.daily ?? [],
+          byMethod: res.data?.byMethod ?? [],
+          summary: {
+            totalOrders: res.data?.summary?.totalOrders ?? 0,
+            totalRevenue: res.data?.summary?.totalRevenue ?? 0,
+            totalService: res.data?.summary?.totalService ?? 0,
+            totalTax: res.data?.summary?.totalTax ?? 0,
+            dineInCount: res.data?.summary?.dineInCount ?? 0,
+            takeAwayCount: res.data?.summary?.takeAwayCount ?? 0,
+            averageOrder: res.data?.summary?.averageOrder ?? 0,
+          },
+        });
+      } catch {
+        if (!silent) setData(null);
+      } finally {
+        if (!silent) setLoading(false);
+      }
+    },
+    [startDate, endDate, token]
+  );
 
   useEffect(() => {
     fetchReport();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Keep the report from going stale while the tab is left open: re-fetch
+  // (silently, for the currently selected range) every 30s as a fallback,
+  // and immediately whenever the admin switches back to this tab.
+  useEffect(() => {
+    const interval = setInterval(() => fetchReport(undefined, undefined, true), 30000);
+    const onFocus = () => fetchReport(undefined, undefined, true);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [fetchReport]);
 
   if (!ready || !allowed) return null;
 
