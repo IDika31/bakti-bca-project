@@ -37,8 +37,11 @@ dashboardRoutes.get("/", async (c) => {
     prisma.table.count({ where: { isActive: true } }),
   ]);
 
+  // Unlike the today/revenue stats above (which must stay PAID-only, since
+  // they're financial figures), this list is for operational visibility —
+  // staff need to see an order the moment it comes in, before it's been
+  // paid/settled. No paymentStatus filter here on purpose.
   const recentOrders = await prisma.order.findMany({
-    where: { paymentStatus: "PAID" },
     include: {
       table: { select: { number: true, name: true } },
       _count: { select: { items: true } },
