@@ -55,13 +55,15 @@ function playNotificationSound() {
     const burst = (offset: number) => {
       beep(offset, 880, 1174.66);           // beep 1
       beep(offset + 0.6, 880, 1174.66);     // beep 2
-      beep(offset + 1.2, 988, 1318.51);     // beep 3 (higher)
-      beep(offset + 1.8, 1174.66, 1567.98); // beep 4 (highest, most urgent)
+      beep(offset + 1.2, 880, 1174.66);     // beep 2
+      beep(offset + 1.8, 880, 1174.66);     // beep 2
+      // beep(offset + 1.2, 988, 1318.51);     // beep 3 (higher)
+      // beep(offset + 1.8, 1174.66, 1567.98); // beep 4 (highest, most urgent)
     };
 
     const t = ctx.currentTime;
     burst(t);        // first burst
-    burst(t + 2.6);  // second burst — repeats so it's harder to miss
+    // burst(t + 2.6);  // second burst — repeats so it's harder to miss
 
     // Close the AudioContext after the last beep finishes.
     const totalMs = (2.6 + 1.8 + 0.52) * 1000 + 200;
