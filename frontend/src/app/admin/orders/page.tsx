@@ -74,10 +74,10 @@ interface OrderAdmin {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  PENDING: "bg-slate-100 text-slate-800",
-  CONFIRMED: "bg-emerald-100 text-emerald-800",
+  PLACED: "bg-slate-100 text-slate-800",
   PREPARING: "bg-primary/15 text-primary",
   READY: "bg-green-100 text-green-800",
+  PICKED_UP: "bg-sky-100 text-sky-800",
   COMPLETED: "bg-gray-100 text-gray-800",
   CANCELLED: "bg-red-100 text-red-800",
 };
@@ -219,9 +219,10 @@ export default function AdminOrdersPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="ALL">Semua Status</SelectItem>
-            <SelectItem value="CONFIRMED">Diterima</SelectItem>
+            <SelectItem value="PLACED">Pesanan Masuk</SelectItem>
             <SelectItem value="PREPARING">Sedang Disiapkan</SelectItem>
             <SelectItem value="READY">Siap Diambil</SelectItem>
+            <SelectItem value="PICKED_UP">Sudah Diambil</SelectItem>
             <SelectItem value="COMPLETED">Selesai</SelectItem>
             <SelectItem value="CANCELLED">Dibatalkan</SelectItem>
           </SelectContent>
@@ -302,7 +303,7 @@ export default function AdminOrdersPage() {
 
                   {!["COMPLETED", "CANCELLED"].includes(order.orderStatus) && (
                     <div className="mt-3 flex flex-wrap gap-2">
-                      {(order.orderStatus === "PENDING" || order.orderStatus === "CONFIRMED") && (
+                      {order.orderStatus === "PLACED" && (
                         <Button size="sm" onClick={() => updateStatus(order.id, "PREPARING")}>
                           Proses
                         </Button>
@@ -312,7 +313,12 @@ export default function AdminOrdersPage() {
                           Siap
                         </Button>
                       )}
-                      {order.orderStatus === "READY" && order.paymentStatus === "UNPAID" && (
+                      {order.orderStatus === "READY" && (
+                        <Button size="sm" className="bg-sky-600 hover:bg-sky-700" onClick={() => updateStatus(order.id, "PICKED_UP")}>
+                          Sudah Diambil
+                        </Button>
+                      )}
+                      {order.orderStatus === "PICKED_UP" && order.paymentStatus === "UNPAID" && (
                         <>
                           <span className="self-center text-xs text-muted-foreground">Tandai lunas:</span>
                           <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => markAsPaid(order.id, "CASH")}>
@@ -323,7 +329,7 @@ export default function AdminOrdersPage() {
                           </Button>
                         </>
                       )}
-                      {order.orderStatus === "READY" && order.paymentStatus === "PAID" && (
+                      {order.orderStatus === "PICKED_UP" && order.paymentStatus === "PAID" && (
                         <Button size="sm" className="gap-1 bg-green-600 hover:bg-green-700" onClick={() => completeOrder(order.id)}>
                           <CheckCircle2 className="h-3.5 w-3.5" />
                           Selesai

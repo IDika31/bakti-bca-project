@@ -49,12 +49,14 @@ tripayRoutes.post("/tripay/callback", async (c) => {
     const diff = Math.abs(paidAmount - transaction.order.grandTotal);
 
     let orderPaymentStatus: "PAID" | "UNPAID" = "PAID";
-    let orderStatus: "CONFIRMED" | "PENDING" = "CONFIRMED";
+    // Online payment settled up-front; the order enters the kitchen queue at
+    // PLACED (payment is tracked separately via paymentStatus).
+    let orderStatus: "PLACED" = "PLACED";
 
     if (diff > AMOUNT_TOLERANCE) {
       // Flag for admin review — still mark as paid but could add a flag
       orderPaymentStatus = "PAID";
-      orderStatus = "CONFIRMED";
+      orderStatus = "PLACED";
     }
 
     await prisma.$transaction([

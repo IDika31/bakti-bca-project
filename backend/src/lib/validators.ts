@@ -114,9 +114,9 @@ export const tripayConfigSchema = z.object({
 
 export const orderStatusUpdateSchema = z.object({
   orderStatus: z.enum([
-    "CONFIRMED",
     "PREPARING",
     "READY",
+    "PICKED_UP",
     "COMPLETED",
     "CANCELLED",
   ]),

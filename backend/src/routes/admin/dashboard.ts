@@ -28,8 +28,9 @@ dashboardRoutes.get("/", async (c) => {
     }),
     prisma.order.count({
       where: {
-        orderStatus: { in: ["CONFIRMED", "PREPARING"] },
-        paymentStatus: "PAID",
+        // Active kitchen work, regardless of payment: in the new flow cashier
+        // orders stay UNPAID until pickup, so a PAID filter would hide them.
+        orderStatus: { in: ["PLACED", "PREPARING", "READY"] },
       },
     }),
     prisma.menuItem.count({ where: { isAvailable: true } }),

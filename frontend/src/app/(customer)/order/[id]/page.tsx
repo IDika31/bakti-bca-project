@@ -14,18 +14,18 @@ import { toast } from "sonner";
 import type { Order, ApiResponse, PaymentInstruction } from "@/types";
 
 const STEPS = [
-  { key: "PENDING", label: "Menunggu", icon: Clock, color: "text-amber-600" },
-  { key: "CONFIRMED", label: "Diterima", icon: CheckCircle2, color: "text-blue-600" },
+  { key: "PLACED", label: "Pesanan Masuk", icon: Clock, color: "text-amber-600" },
   { key: "PREPARING", label: "Diproses", icon: ChefHat, color: "text-orange-600" },
   { key: "READY", label: "Siap", icon: Package, color: "text-emerald-600" },
+  { key: "PICKED_UP", label: "Diambil", icon: CheckCircle2, color: "text-emerald-600" },
   { key: "COMPLETED", label: "Selesai", icon: CheckCircle2, color: "text-emerald-700" },
 ];
 
 const STATUS_THEMES: Record<string, { gradient: string; border: string; text: string; badge: string }> = {
-  PENDING: { gradient: "from-amber-50 via-orange-50/50 to-amber-50/30", border: "border-amber-200/80", text: "text-amber-800", badge: "bg-amber-100 text-amber-800" },
-  CONFIRMED: { gradient: "from-blue-50 via-sky-50/50 to-blue-50/30", border: "border-blue-200/80", text: "text-blue-800", badge: "bg-blue-100 text-blue-800" },
+  PLACED: { gradient: "from-amber-50 via-orange-50/50 to-amber-50/30", border: "border-amber-200/80", text: "text-amber-800", badge: "bg-amber-100 text-amber-800" },
   PREPARING: { gradient: "from-orange-50 via-amber-50/50 to-orange-50/30", border: "border-orange-200/80", text: "text-orange-800", badge: "bg-orange-100 text-orange-800" },
   READY: { gradient: "from-emerald-50 via-green-50/50 to-emerald-50/30", border: "border-emerald-200/80", text: "text-emerald-800", badge: "bg-emerald-100 text-emerald-800" },
+  PICKED_UP: { gradient: "from-sky-50 via-blue-50/50 to-sky-50/30", border: "border-sky-200/80", text: "text-sky-800", badge: "bg-sky-100 text-sky-800" },
   COMPLETED: { gradient: "from-emerald-50 via-primary/5 to-emerald-50/30", border: "border-emerald-200/80", text: "text-emerald-800", badge: "bg-emerald-100 text-emerald-800" },
   CANCELLED: { gradient: "from-red-50 via-rose-50/50 to-red-50/30", border: "border-red-200/80", text: "text-red-800", badge: "bg-red-100 text-red-800" },
 };
@@ -91,7 +91,7 @@ export default function OrderStatusPage() {
   }
 
   const currentIdx = STEPS.findIndex((s) => s.key === order.orderStatus);
-  const theme = STATUS_THEMES[order.orderStatus] || STATUS_THEMES.PENDING;
+  const theme = STATUS_THEMES[order.orderStatus] || STATUS_THEMES.PLACED;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-muted/30 to-background pb-8 print:bg-white print:px-0">
@@ -348,6 +348,8 @@ export default function OrderStatusPage() {
                     <p className="text-sm text-emerald-700">
                       {order.orderStatus === "COMPLETED"
                         ? "Pesanan sudah selesai. Terima kasih!"
+                        : order.orderStatus === "PICKED_UP"
+                        ? "Pesanan sudah diambil"
                         : order.orderStatus === "READY"
                         ? "Pesanan siap diambil / diantar"
                         : order.orderStatus === "PREPARING"

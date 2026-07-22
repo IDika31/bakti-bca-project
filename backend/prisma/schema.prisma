@@ -170,7 +170,7 @@ model Order {
   servicePercent Decimal?      @map("service_percent")
   taxPercent     Decimal?      @map("tax_percent")
   paymentStatus  PaymentStatus @default(UNPAID) @map("payment_status")
-  orderStatus    OrderStatus   @default(PENDING) @map("order_status")
+  orderStatus    OrderStatus   @default(PLACED) @map("order_status")
   parentOrderId      String?   @map("parent_order_id")
   parentOrder        Order?    @relation("OrderToOrder", fields: [parentOrderId], references: [id], onDelete: SetNull)
   childOrders        Order[]   @relation("OrderToOrder")
@@ -204,10 +204,10 @@ enum PaymentStatus {
 }
 
 enum OrderStatus {
-  PENDING
-  CONFIRMED
+  PLACED
   PREPARING
   READY
+  PICKED_UP
   COMPLETED
   CANCELLED
 }
