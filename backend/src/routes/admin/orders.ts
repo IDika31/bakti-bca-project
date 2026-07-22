@@ -3,6 +3,7 @@ import { prisma } from "../../lib/prisma.js";
 import { success, error, paginated } from "../../lib/response.js";
 import { orderStatusUpdateSchema, cashierPaySchema } from "../../lib/validators.js";
 import { requireRole } from "../../lib/auth.js";
+import { releaseLockForOrder } from "../../lib/table-lock.js";
 
 const orderRoutes = new Hono();
 // All admin roles may read/update orders (cashier marks orders paid + completes them).
@@ -112,6 +113,11 @@ orderRoutes.patch("/:id", async (c) => {
     data: { orderStatus: parsed.data.orderStatus },
   });
 
+  // Terminal status frees the table's device lock.
+  if (parsed.data.orderStatus === "COMPLETED" || parsed.data.orderStatus === "CANCELLED") {
+    await releaseLockForOrder(id);
+  }
+
   return success(c, updated);
 });
 
@@ -190,6 +196,8 @@ orderRoutes.patch("/:id/cancel", async (c) => {
     },
   });
 
+  await releaseLockForOrder(id);
+
   return success(c, updated);
 });
 
@@ -211,6 +219,8 @@ orderRoutes.patch("/:id/complete", async (c) => {
     where: { id },
     data: { orderStatus: "COMPLETED" },
   });
+
+  await releaseLockForOrder(id);
 
   return success(c, updated);
 });

@@ -16,6 +16,16 @@ interface ApiOptions extends RequestInit {
   token?: string;
 }
 
+/** Error thrown by the api helper on a non-2xx response, carrying the HTTP status. */
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 async function request<T>(path: string, options: ApiOptions = {}): Promise<T> {
   const { token, ...fetchOptions } = options;
 
@@ -40,7 +50,7 @@ async function request<T>(path: string, options: ApiOptions = {}): Promise<T> {
       clearAdminSession();
       window.location.href = "/admin/login";
     }
-    throw new Error(data.error || `Request failed: ${res.status}`);
+    throw new ApiError(data.error || `Request failed: ${res.status}`, res.status);
   }
 
   return data;

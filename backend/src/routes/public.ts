@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { prisma } from "../lib/prisma.js";
 import { success, error } from "../lib/response.js";
 import { getPaymentInstructions } from "../lib/tripay.js";
+import { canClaimLock } from "../lib/table-lock.js";
 
 const publicRoutes = new Hono();
 
@@ -65,18 +66,52 @@ publicRoutes.get("/tax-config", async (c) => {
   return success(c, config);
 });
 
-// GET /tables/validate?t=TOKEN
+// GET /tables/validate?t=TOKEN&sessionId=UUID
+// Validates the table AND claims a per-device lock: only one device (session)
+// may order from a table at a time. A second device scanning the same QR is
+// rejected with 423 while the first device's order is still in progress.
 publicRoutes.get("/tables/validate", async (c) => {
   const token = c.req.query("t");
   if (!token) return error(c, "Token tidak diberikan", 400);
+  const sessionId = c.req.query("sessionId");
 
   const table = await prisma.table.findUnique({
     where: { token, isActive: true },
-    select: { id: true, number: true, name: true },
+    select: { id: true, number: true, name: true, lockedSessionId: true, lockedAt: true },
   });
 
   if (!table) return error(c, "Meja tidak ditemukan", 404);
-  return success(c, table);
+
+  // No sessionId → legacy/soft check, just return table info without locking.
+  if (!sessionId) {
+    return success(c, { id: table.id, number: table.number, name: table.name });
+  }
+
+  const allowed = await canClaimLock(table, sessionId);
+  if (!allowed) {
+    return error(
+      c,
+      "Meja ini sedang dipakai perangkat lain. Silakan pesan dari perangkat tersebut atau minta kasir membebaskan meja.",
+      423
+    );
+  }
+
+  // Claim (or refresh) the lock for this device. Guarded updateMany so two
+  // devices racing can't both win — the row must still match the exact holder
+  // state we just read (free, us, or the stale holder we're allowed to evict).
+  const claimWhere: Record<string, unknown> = { id: table.id };
+  if (table.lockedSessionId) {
+    // Takeover of a stale/orderless holder (canClaimLock already approved it).
+    claimWhere.lockedSessionId = table.lockedSessionId;
+  } else {
+    claimWhere.lockedSessionId = null;
+  }
+  await prisma.table.updateMany({
+    where: claimWhere,
+    data: { lockedSessionId: sessionId, lockedAt: new Date() },
+  });
+
+  return success(c, { id: table.id, number: table.number, name: table.name });
 });
 
 // GET /payment-methods (active + shown only)

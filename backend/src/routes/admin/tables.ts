@@ -16,6 +16,18 @@ tableRoutes.get("/", async (c) => {
   return success(c, tables);
 });
 
+// POST /admin/tables/:id/unlock — manually free a table's device lock so a new
+// device can scan and order. Used when a customer leaves without their order
+// reaching a terminal state, or a lock is stuck.
+tableRoutes.post("/:id/unlock", async (c) => {
+  const id = c.req.param("id");
+  const table = await prisma.table.update({
+    where: { id },
+    data: { lockedSessionId: null, lockedAt: null },
+  });
+  return success(c, table);
+});
+
 tableRoutes.post("/", async (c) => {
   const body = await c.req.json();
   const parsed = tableSchema.safeParse(body);

@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { CartProvider } from "@/hooks/use-cart";
 import { TableProvider } from "@/hooks/use-table";
+import { TableLockGate } from "@/components/table-lock-gate";
 import { Toaster } from "@/components/ui/sonner";
 
 export default function CustomerLayout({
@@ -22,7 +23,7 @@ export default function CustomerLayout({
               <div className="absolute right-[-10rem] top-40 h-[28rem] w-[28rem] rounded-full bg-emerald-300/20 blur-3xl dark:bg-emerald-700/10" />
               <div className="absolute bottom-0 left-1/3 h-[24rem] w-[24rem] rounded-full bg-lime-200/20 blur-3xl dark:bg-lime-500/5" />
             </div>
-            {children}
+            <TableLockGate>{children}</TableLockGate>
             <Toaster position="top-center" richColors />
           </div>
         </TableProvider>
