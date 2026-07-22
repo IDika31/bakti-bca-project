@@ -66,7 +66,7 @@ function playNotificationSound() {
     // burst(t + 2.6);  // second burst — repeats so it's harder to miss
 
     // Close the AudioContext after the last beep finishes.
-    const totalMs = (2.6 + 1.8 + 0.52) * 1000 + 200;
+    const totalMs = (1.8 + 0.52) * 1000 + 200;
     window.setTimeout(() => { void ctx.close(); }, totalMs);
   } catch {}
 
@@ -196,6 +196,56 @@ export function AdminNotificationsProvider({ children }: { children: React.React
     if (pathname === "/admin/orders") setUnreadCount(0);
   }, [pathname]);
 
+  // Dedupe guard: an order can reach the UI two ways — the live realtime
+  // event, or the catch-up fetch below — this stops it from notifying twice.
+  const seenOrderIdsRef = useRef<Set<string>>(new Set());
+
+  // Runs all the "a new order arrived" side effects (print, sound, toast,
+  // browser notif, voice). Shared by both the live realtime handler and the
+  // catch-up reconciliation, so the two paths behave identically.
+  const handleNewOrder = (orderId: string | undefined, orderNumber: string) => {
+    if (orderId) {
+      if (seenOrderIdsRef.current.has(orderId)) return;
+      seenOrderIdsRef.current.add(orderId);
+    }
+
+    // Fire the auto-print request FIRST, before anything else in this
+    // handler, so the Bluetooth write is queued as early as physically
+    // possible — every millisecond matters in a busy kitchen. It's
+    // async and un-awaited, so it doesn't block the rest of the handler.
+    if (orderId) void autoPrintNewOrder(orderId);
+
+    if (pathnameRef.current !== "/admin/orders") {
+      setUnreadCount((c) => c + 1);
+    }
+    if (soundRef.current) playNotificationSound();
+    flashTabTitle(`🔔 PESANAN BARU #${orderNumber}`);
+    toast.info(`Pesanan baru: #${orderNumber}`, {
+      action: orderId
+        ? {
+            label: "Lihat",
+            onClick: () => routerRef.current.push(`/admin/orders?highlight=${orderId}`),
+          }
+        : undefined,
+    });
+    if (browserRef.current && typeof Notification !== "undefined" && Notification.permission === "granted") {
+      const n = new Notification("Pesanan baru masuk", {
+        body: `#${orderNumber}`,
+        tag: `order-${orderId ?? orderNumber}`,
+      });
+      n.onclick = () => {
+        window.focus();
+        if (orderId) routerRef.current.push(`/admin/orders?highlight=${orderId}`);
+      };
+    }
+
+    // Speak "Pesanan baru masuk dari meja ..." after the beep burst so
+    // the two sounds don't overlap and become unintelligible.
+    if (orderId) {
+      window.setTimeout(() => void announceOrder(orderId, orderNumber), 2600);
+    }
+  };
+
   useEffect(() => {
     if (!supabase) return;
     // Guard against double-subscription: React StrictMode (dev) invokes effects
@@ -205,6 +255,35 @@ export function AdminNotificationsProvider({ children }: { children: React.React
     for (const ch of supabase.getChannels()) {
       if (ch.topic === "realtime:admin-orders-global") supabase.removeChannel(ch);
     }
+
+    // Mark the moment we start trying to connect — this is the start of the
+    // window an order could slip through before the socket is actually live.
+    const connectingSince = new Date().toISOString();
+
+    // Supabase Realtime does not replay anything that happened before the
+    // channel reaches "SUBSCRIBED" — connecting the WebSocket and joining the
+    // channel takes a beat, so an order placed in that gap (most likely right
+    // after a fresh page load / re-login) fires no INSERT event at all. Once
+    // we're actually subscribed, fetch anything created since connectingSince
+    // and run it through the same handler, so it isn't silently missed.
+    const catchUp = async (status: string) => {
+      if (status !== "SUBSCRIBED") return;
+      try {
+        const token = localStorage.getItem("admin-token") || "";
+        const res = await api.get<ApiResponse<Array<{ id: string; orderNumber: string }>>>(
+          `/api/admin/orders?since=${encodeURIComponent(connectingSince)}&limit=20`,
+          { token }
+        );
+        // API returns newest-first; replay oldest-first so notifications
+        // (and the voice queue) land in the order they actually happened.
+        for (const order of [...(res.data ?? [])].reverse()) {
+          handleNewOrder(order.id, order.orderNumber);
+        }
+      } catch {
+        // best-effort — a missed catch-up shouldn't break live notifications
+      }
+    };
+
     const channel = supabase
       .channel("admin-orders-global")
       .on(
@@ -213,45 +292,10 @@ export function AdminNotificationsProvider({ children }: { children: React.React
         (payload) => {
           const orderNumber = (payload.new as { order_number?: string } | null)?.order_number || "";
           const orderId = (payload.new as { id?: string } | null)?.id;
-
-          // Fire the auto-print request FIRST, before anything else in this
-          // handler, so the Bluetooth write is queued as early as physically
-          // possible — every millisecond matters in a busy kitchen. It's
-          // async and un-awaited, so it doesn't block the rest of the handler.
-          if (orderId) void autoPrintNewOrder(orderId);
-
-          if (pathnameRef.current !== "/admin/orders") {
-            setUnreadCount((c) => c + 1);
-          }
-          if (soundRef.current) playNotificationSound();
-          flashTabTitle(`🔔 PESANAN BARU #${orderNumber}`);
-          toast.info(`Pesanan baru: #${orderNumber}`, {
-            action: orderId
-              ? {
-                  label: "Lihat",
-                  onClick: () => routerRef.current.push(`/admin/orders?highlight=${orderId}`),
-                }
-              : undefined,
-          });
-          if (browserRef.current && typeof Notification !== "undefined" && Notification.permission === "granted") {
-            const n = new Notification("Pesanan baru masuk", {
-              body: `#${orderNumber}`,
-              tag: `order-${orderId ?? orderNumber}`,
-            });
-            n.onclick = () => {
-              window.focus();
-              if (orderId) routerRef.current.push(`/admin/orders?highlight=${orderId}`);
-            };
-          }
-
-          // Speak "Pesanan baru masuk dari meja ..." after the beep burst so
-          // the two sounds don't overlap and become unintelligible.
-          if (orderId) {
-            window.setTimeout(() => void announceOrder(orderId, orderNumber), 2600);
-          }
+          handleNewOrder(orderId, orderNumber);
         }
       )
-      .subscribe();
+      .subscribe((status) => { void catchUp(status); });
 
     return () => {
       supabase!.removeChannel(channel);
