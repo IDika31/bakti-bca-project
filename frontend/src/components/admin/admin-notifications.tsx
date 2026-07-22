@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Bell, BellOff, Printer } from "lucide-react";
+import { Bell, BellOff, Printer, Mic, MicOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabase";
 import {
@@ -19,6 +19,7 @@ import type { ApiResponse } from "@/types";
 
 const SOUND_KEY = "admin-sound-enabled";
 const BROWSER_KEY = "admin-browser-notif";
+const VOICE_KEY = "admin-voice-enabled";
 
 // Loud, persistent alert: a rising 4-beep two-tone burst on a square wave
 // (full gain) played TWICE so it cuts through a noisy kitchen, plus a
@@ -75,6 +76,31 @@ function playNotificationSound() {
   } catch {}
 }
 
+// Speak a short line via the browser's built-in TTS (Web Speech API).
+// Returns a promise that resolves once speech playback actually finishes
+// (or immediately if TTS isn't available/fails), so callers can chain
+// announcements one after another instead of letting them overlap.
+function speak(text: string): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+      resolve();
+      return;
+    }
+    try {
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.lang = "id-ID";
+      utter.rate = 0.95;
+      utter.pitch = 1;
+      utter.volume = 1;
+      utter.onend = () => resolve();
+      utter.onerror = () => resolve();
+      window.speechSynthesis.speak(utter);
+    } catch {
+      resolve();
+    }
+  });
+}
+
 // Flash the browser tab title until the window is focused, so a new order is
 // visible even when the admin tab is in the background. Cleans up on focus.
 let titleFlashTimer: ReturnType<typeof setInterval> | null = null;
@@ -102,9 +128,11 @@ function flashTabTitle(message: string) {
 interface NotifCtxValue {
   unreadCount: number;
   soundEnabled: boolean;
+  voiceEnabled: boolean;
   browserEnabled: boolean;
   printerConnected: boolean;
   toggleSound: () => void;
+  toggleVoice: () => void;
   toggleBrowser: () => Promise<void>;
   pairPrinter: () => Promise<void>;
 }
@@ -112,9 +140,11 @@ interface NotifCtxValue {
 const NotifCtx = createContext<NotifCtxValue>({
   unreadCount: 0,
   soundEnabled: true,
+  voiceEnabled: true,
   browserEnabled: false,
   printerConnected: false,
   toggleSound: () => {},
+  toggleVoice: () => {},
   toggleBrowser: async () => {},
   pairPrinter: async () => {},
 });
@@ -128,10 +158,14 @@ export function AdminNotificationsProvider({ children }: { children: React.React
   const pathname = usePathname();
   const [unreadCount, setUnreadCount] = useState(0);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [browserEnabled, setBrowserEnabled] = useState(false);
   const [printerConnected, setPrinterConnected] = useState(false);
   const soundRef = useRef(true);
+  const voiceRef = useRef(true);
   const browserRef = useRef(false);
+  const voiceQueueRef = useRef<Array<{ orderId: string; orderNumber: string }>>([]);
+  const isSpeakingRef = useRef(false);
   const pathnameRef = useRef(pathname);
   const routerRef = useRef(router);
   useEffect(() => { routerRef.current = router; }, [router]);
@@ -139,16 +173,20 @@ export function AdminNotificationsProvider({ children }: { children: React.React
   useEffect(() => {
     if (typeof window === "undefined") return;
     const s = localStorage.getItem(SOUND_KEY) !== "false";
+    const v = localStorage.getItem(VOICE_KEY) !== "false";
     const b = localStorage.getItem(BROWSER_KEY) === "true";
     setSoundEnabled(s);
+    setVoiceEnabled(v);
     setBrowserEnabled(b);
     soundRef.current = s;
+    voiceRef.current = v;
     browserRef.current = b;
     // Silently reconnect to a previously-paired Bluetooth printer (no prompt).
     reconnectPrinter().then(setPrinterConnected);
   }, []);
 
   useEffect(() => { soundRef.current = soundEnabled; }, [soundEnabled]);
+  useEffect(() => { voiceRef.current = voiceEnabled; }, [voiceEnabled]);
   useEffect(() => { browserRef.current = browserEnabled; }, [browserEnabled]);
   useEffect(() => { pathnameRef.current = pathname; }, [pathname]);
 
@@ -174,6 +212,12 @@ export function AdminNotificationsProvider({ children }: { children: React.React
           const orderNumber = (payload.new as { order_number?: string } | null)?.order_number || "";
           const orderId = (payload.new as { id?: string } | null)?.id;
 
+          // Fire the auto-print request FIRST, before anything else in this
+          // handler, so the Bluetooth write is queued as early as physically
+          // possible — every millisecond matters in a busy kitchen. It's
+          // async and un-awaited, so it doesn't block the rest of the handler.
+          if (orderId) void autoPrintNewOrder(orderId);
+
           if (pathnameRef.current !== "/admin/orders") {
             setUnreadCount((c) => c + 1);
           }
@@ -197,9 +241,12 @@ export function AdminNotificationsProvider({ children }: { children: React.React
               if (orderId) routerRef.current.push(`/admin/orders?highlight=${orderId}`);
             };
           }
-          // Auto-print the receipt if a Bluetooth printer is already connected.
-          // Silent (no prompt) — only fires when paired earlier in the session.
-          if (orderId) void autoPrintNewOrder(orderId);
+
+          // Speak "Pesanan baru masuk dari meja ..." after the beep burst so
+          // the two sounds don't overlap and become unintelligible.
+          if (orderId) {
+            window.setTimeout(() => void announceOrder(orderId, orderNumber), 2600);
+          }
         }
       )
       .subscribe();
@@ -214,6 +261,21 @@ export function AdminNotificationsProvider({ children }: { children: React.React
       const next = !v;
       localStorage.setItem(SOUND_KEY, String(next));
       toast.info(next ? "Notifikasi suara aktif" : "Notifikasi suara nonaktif");
+      return next;
+    });
+  };
+
+  const toggleVoice = () => {
+    setVoiceEnabled((v) => {
+      const next = !v;
+      localStorage.setItem(VOICE_KEY, String(next));
+      toast.info(next ? "Suara pengumuman pesanan aktif" : "Suara pengumuman pesanan nonaktif");
+      if (!next) {
+        voiceQueueRef.current = []; // drop anything still waiting in line
+        if (typeof window !== "undefined" && "speechSynthesis" in window) {
+          window.speechSynthesis.cancel();
+        }
+      }
       return next;
     });
   };
@@ -237,6 +299,54 @@ export function AdminNotificationsProvider({ children }: { children: React.React
     } else {
       toast.error("Izin notifikasi ditolak");
     }
+  };
+
+  // Build the spoken text for an order, e.g. "Pesanan baru masuk dari meja 5"
+  // or "... atas nama Budi". Falls back to the order number on any failure.
+  const buildAnnouncementText = async (orderId: string, orderNumber: string) => {
+    try {
+      const token = localStorage.getItem("admin-token") || "";
+      const res = await api.get<
+        ApiResponse<{
+          orderType: string;
+          customerName: string | null;
+          table: { number: number; name: string | null } | null;
+        }>
+      >(`/api/admin/orders/${orderId}`, { token });
+      const o = res.data;
+      if (!o) return `Pesanan baru masuk, nomor ${orderNumber}`;
+      if (o.orderType === "DINE_IN" && o.table) {
+        const label = o.table.name || `nomor ${o.table.number}`;
+        return `Pesanan baru masuk dari meja ${label}`;
+      }
+      if (o.customerName) return `Pesanan baru masuk, atas nama ${o.customerName}`;
+      return `Pesanan baru masuk, nomor ${orderNumber}`;
+    } catch {
+      return `Pesanan baru masuk, nomor ${orderNumber}`;
+    }
+  };
+
+  // Process the voice queue one order at a time: fetch its text, speak it,
+  // wait for playback to actually finish, THEN move to the next one. This is
+  // what makes overlapping orders queue up instead of talking over each other.
+  const processVoiceQueue = async () => {
+    if (isSpeakingRef.current) return; // already processing — this call will be picked up by the loop below
+    isSpeakingRef.current = true;
+    while (voiceQueueRef.current.length > 0) {
+      const next = voiceQueueRef.current.shift()!;
+      if (!voiceRef.current) continue; // voice got disabled mid-queue — skip remaining speak, just drain
+      const text = await buildAnnouncementText(next.orderId, next.orderNumber);
+      await speak(text);
+    }
+    isSpeakingRef.current = false;
+  };
+
+  // Entry point called from the realtime listener: enqueue the order and
+  // kick the queue processor (no-op if it's already running).
+  const announceOrder = (orderId: string, orderNumber: string) => {
+    if (!voiceRef.current) return;
+    voiceQueueRef.current.push({ orderId, orderNumber });
+    void processVoiceQueue();
   };
 
   // Fetch the full order + print its receipt to the connected Bluetooth printer.
@@ -318,7 +428,17 @@ export function AdminNotificationsProvider({ children }: { children: React.React
 
   return (
     <NotifCtx.Provider
-      value={{ unreadCount, soundEnabled, browserEnabled, printerConnected, toggleSound, toggleBrowser, pairPrinter: handlePairPrinter }}
+      value={{
+        unreadCount,
+        soundEnabled,
+        voiceEnabled,
+        browserEnabled,
+        printerConnected,
+        toggleSound,
+        toggleVoice,
+        toggleBrowser,
+        pairPrinter: handlePairPrinter,
+      }}
     >
       {children}
     </NotifCtx.Provider>
@@ -326,7 +446,16 @@ export function AdminNotificationsProvider({ children }: { children: React.React
 }
 
 export function AdminNotifications() {
-  const { soundEnabled, browserEnabled, printerConnected, toggleSound, toggleBrowser, pairPrinter } = useAdminNotifications();
+  const {
+    soundEnabled,
+    voiceEnabled,
+    browserEnabled,
+    printerConnected,
+    toggleSound,
+    toggleVoice,
+    toggleBrowser,
+    pairPrinter,
+  } = useAdminNotifications();
   return (
     <div className="flex items-center gap-1">
       <Button
@@ -345,6 +474,14 @@ export function AdminNotifications() {
         title={soundEnabled ? "Matikan suara notifikasi" : "Nyalakan suara notifikasi"}
       >
         {soundEnabled ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4 text-muted-foreground" />}
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={toggleVoice}
+        title={voiceEnabled ? "Matikan suara pengumuman pesanan" : "Nyalakan suara pengumuman pesanan"}
+      >
+        {voiceEnabled ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4 text-muted-foreground" />}
       </Button>
       <Button
         variant="ghost"
