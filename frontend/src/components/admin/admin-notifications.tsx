@@ -132,6 +132,8 @@ export function AdminNotificationsProvider({ children }: { children: React.React
   const soundRef = useRef(true);
   const browserRef = useRef(false);
   const pathnameRef = useRef(pathname);
+  const routerRef = useRef(router);
+  useEffect(() => { routerRef.current = router; }, [router]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -155,6 +157,13 @@ export function AdminNotificationsProvider({ children }: { children: React.React
 
   useEffect(() => {
     if (!supabase) return;
+    // Guard against double-subscription: React StrictMode (dev) invokes effects
+    // twice, and removeChannel is async, so a naive subscribe can leave two live
+    // channels — firing the sound (and every notification) twice per order.
+    // Drop any pre-existing channel with this name before opening a new one.
+    for (const ch of supabase.getChannels()) {
+      if (ch.topic === "realtime:admin-orders-global") supabase.removeChannel(ch);
+    }
     const channel = supabase
       .channel("admin-orders-global")
       .on(
@@ -173,7 +182,7 @@ export function AdminNotificationsProvider({ children }: { children: React.React
             action: orderId
               ? {
                   label: "Lihat",
-                  onClick: () => router.push(`/admin/orders?highlight=${orderId}`),
+                  onClick: () => routerRef.current.push(`/admin/orders?highlight=${orderId}`),
                 }
               : undefined,
           });
@@ -184,7 +193,7 @@ export function AdminNotificationsProvider({ children }: { children: React.React
             });
             n.onclick = () => {
               window.focus();
-              if (orderId) router.push(`/admin/orders?highlight=${orderId}`);
+              if (orderId) routerRef.current.push(`/admin/orders?highlight=${orderId}`);
             };
           }
           // Auto-print the receipt if a Bluetooth printer is already connected.
@@ -197,7 +206,7 @@ export function AdminNotificationsProvider({ children }: { children: React.React
     return () => {
       supabase!.removeChannel(channel);
     };
-  }, [router]);
+  }, []);
 
   const toggleSound = () => {
     setSoundEnabled((v) => {
