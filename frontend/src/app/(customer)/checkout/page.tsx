@@ -52,6 +52,13 @@ export default function CheckoutPage() {
   const selectedPm = paymentMethods.find((pm) => pm.code === selectedMethod);
   const paymentFee = selectedPm?.feeCustomer ?? 0;
   const totalBayar = totals.grandTotal + paymentFee;
+  // Cash-at-counter orders go into the kitchen immediately and get paid
+  // later at the counter — "Bayar Sekarang" (Pay Now) is misleading there
+  // since nothing is being paid at this step, just the order itself.
+  const submitLabel =
+    selectedMethod === "CASHIER"
+      ? `Pesan Sekarang — ${formatCurrency(totalBayar)}`
+      : `Bayar Sekarang — ${formatCurrency(totalBayar)}`;
 
   const handleSubmit = async () => {
     setAttempted(true);
@@ -353,7 +360,7 @@ export default function CheckoutPage() {
               {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {!opStatus.loading && !opStatus.isOpen
                 ? "Restoran Tutup"
-                : `Bayar Sekarang — ${formatCurrency(totalBayar)}`}
+                : submitLabel}
             </Button>
           </div>
         </div>
@@ -371,7 +378,7 @@ export default function CheckoutPage() {
             {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {!opStatus.loading && !opStatus.isOpen
               ? "Restoran Tutup"
-              : `Bayar Sekarang — ${formatCurrency(totalBayar)}`}
+              : submitLabel}
           </Button>
         </div>
       </div>

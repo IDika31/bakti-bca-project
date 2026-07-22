@@ -220,8 +220,7 @@ export default function OrderStatusPage() {
                         "Menuju ke kasir restoran",
                         `Sebutkan nomor pesanan ${order.orderNumber}`,
                         "Lakukan pembayaran tunai atau kartu debit",
-                        "Tunggu konfirmasi dari kasir",
-                        "Pesanan akan segera diproses",
+                        "Pesanan Anda sudah diproses di dapur — bayar bisa kapan saja sebelum pesanan diambil",
                       ].map((step, i) => (
                         <div key={i} className="flex items-start gap-3">
                           <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-amber-200/80 text-xs font-bold text-amber-900">
