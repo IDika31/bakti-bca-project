@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { prisma } from "../../lib/prisma.js";
 import { success, error } from "../../lib/response.js";
-import { format, startOfDay, endOfDay, subDays } from "date-fns";
+import { format, startOfDay, endOfDay, subDays, eachDayOfInterval } from "date-fns";
 import { requireRole } from "../../lib/auth.js";
 
 const reportRoutes = new Hono();
@@ -51,9 +51,16 @@ reportRoutes.get("/", async (c) => {
     methodMap.set(method, methodExisting);
   }
 
-  const daily = Array.from(dailyMap.entries())
-    .map(([date, data]) => ({ date, ...data }))
-    .sort((a, b) => a.date.localeCompare(b.date));
+  // Fill in every day in the range with zero-valued data if it has no paid
+  // orders. Without this, days with no orders are simply absent from the
+  // array (not zero) — if only one day in the range has data, the frontend
+  // line chart receives a single point and can't draw a connecting line,
+  // it just renders a lone dot.
+  const daily = eachDayOfInterval({ start: from, end: to }).map((d) => {
+    const date = format(d, "yyyy-MM-dd");
+    const data = dailyMap.get(date) || { revenue: 0, orders: 0, service: 0, tax: 0 };
+    return { date, ...data };
+  });
 
   const byMethod = Array.from(methodMap.entries())
     .map(([method, data]) => ({ method, ...data }))

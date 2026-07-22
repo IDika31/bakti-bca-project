@@ -13,6 +13,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { supabase } from "@/lib/supabase";
 import { formatCurrency, formatDate, ORDER_STATUS_LABELS } from "@/lib/format";
 import { useRequireRole } from "@/hooks/use-require-role";
 import { toast } from "sonner";
@@ -67,9 +68,37 @@ export default function AdminDashboardPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  // Keep polling as a fallback safety net in case the realtime connection
+  // drops silently — realtime below handles the instant refresh in the
+  // normal case, this just guarantees the dashboard is never more than
+  // 30s stale even if that subscription fails.
   useEffect(() => {
     const interval = setInterval(fetchData, 30000);
     return () => clearInterval(interval);
+  }, [fetchData]);
+
+  // Instantly refresh the dashboard the moment a new order is inserted,
+  // instead of waiting for the next 30s poll.
+  useEffect(() => {
+    if (!supabase) return;
+    // Guard against double-subscription in React StrictMode (dev mode
+    // invokes effects twice) — drop any pre-existing channel with this
+    // name before opening a new one.
+    for (const ch of supabase.getChannels()) {
+      if (ch.topic === "realtime:admin-dashboard-orders") supabase.removeChannel(ch);
+    }
+    const channel = supabase
+      .channel("admin-dashboard-orders")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "orders" },
+        () => { void fetchData(); }
+      )
+      .subscribe();
+
+    return () => {
+      supabase!.removeChannel(channel);
+    };
   }, [fetchData]);
 
   if (!ready || !allowed) return null;
