@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { formatCurrency, formatDate, ORDER_STATUS_LABELS } from "@/lib/format";
+import { useRequireRole } from "@/hooks/use-require-role";
 import { toast } from "sonner";
 import type { ApiResponse } from "@/types";
 import Link from "next/link";
@@ -47,6 +48,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function AdminDashboardPage() {
+  const { ready, allowed } = useRequireRole("OWNER", "ADMIN", "CASHIER");
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -69,6 +71,8 @@ export default function AdminDashboardPage() {
     const interval = setInterval(fetchData, 30000);
     return () => clearInterval(interval);
   }, [fetchData]);
+
+  if (!ready || !allowed) return null;
 
   if (loading) {
     return (

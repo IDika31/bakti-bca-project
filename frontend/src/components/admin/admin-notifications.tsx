@@ -10,6 +10,7 @@ import {
   pairPrinter,
   reconnectPrinter,
   printReceiptAuto,
+  getRestaurantName,
   type ReceiptData,
 } from "@/lib/bluetooth-print";
 import { api } from "@/lib/api";
@@ -246,26 +247,53 @@ export function AdminNotificationsProvider({ children }: { children: React.React
           taxAmount: number;
           grandTotal: number;
           table: { number: number; name: string | null } | null;
-          items: Array<{ quantity: number; price: number; menuItem: { name: string } }>;
+          items: Array<{
+            quantity: number;
+            price: number;
+            notes: string | null;
+            menuItem: { name: string };
+            addons?: Array<{ name: string; priceSnapshot: number; quantity: number }>;
+          }>;
           transaction: { paymentMethod: string | null } | null;
         }>
       >(`/api/admin/orders/${orderId}`, { token });
       const o = res.data;
       if (!o) return;
+      const restaurantName = await getRestaurantName();
       const receipt: ReceiptData = {
         orderNumber: o.orderNumber,
         orderType: o.orderType as "DINE_IN" | "TAKE_AWAY",
         tableLabel: o.table ? o.table.name || `Meja ${o.table.number}` : null,
         customerName: o.customerName,
         createdAt: o.createdAt,
-        items: o.items.map((it) => ({ name: it.menuItem.name, qty: it.quantity, price: it.price })),
+        items: o.items.map((it) => ({
+          name: it.menuItem.name,
+          qty: it.quantity,
+          price: it.price,
+          addons: (it.addons ?? []).map((a) => ({
+            name: a.name,
+            qty: a.quantity,
+            price: a.priceSnapshot,
+          })),
+          notes: it.notes,
+        })),
         subtotal: o.subtotal,
         serviceAmount: o.serviceAmount,
         taxAmount: o.taxAmount,
         grandTotal: o.grandTotal,
         paymentMethod: o.transaction?.paymentMethod ?? null,
+        restaurantName,
       };
-      await printReceiptAuto(receipt);
+      const printed = await printReceiptAuto(receipt);
+      if (printed) {
+        toast.success(`Struk #${o.orderNumber} tercetak otomatis`);
+      } else {
+        // Printer was connected when the order arrived but the write failed
+        // (out of paper, moved out of range, powered off). Warn so the
+        // operator can reprint manually — this is not the silent "never paired"
+        // case, which returns early above.
+        toast.warning(`Gagal cetak struk #${o.orderNumber} otomatis — cetak manual dari detail pesanan`);
+      }
     } catch {
       // silent — auto-print must not interrupt the operator
     }
