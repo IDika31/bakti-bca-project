@@ -3,13 +3,41 @@
 // well-known service UUID 000018f0-0000-1000-8000-00805f9b34fb and a write
 // characteristic 00002af1-0000-1000-8000-00805f9b34fb.
 
+import { api } from "@/lib/api";
+import type { ApiResponse, RestaurantProfile } from "@/types";
+
 const ESCPOS_SERVICE = "000018f0-0000-1000-8000-00805f9b34fb";
 const ESCPOS_CHAR = "00002af1-0000-1000-8000-00805f9b34fb";
+
+// The restaurant name is the same for every receipt, so fetch it once and
+// cache it for the session. Callers await getRestaurantName() before building
+// a receipt; on failure it resolves to null and the receipt uses its fallback.
+let cachedRestaurantName: string | null = null;
+
+export async function getRestaurantName(): Promise<string | null> {
+  if (cachedRestaurantName) return cachedRestaurantName;
+  try {
+    const res = await api.get<ApiResponse<RestaurantProfile>>("/api/restaurant");
+    cachedRestaurantName = res.data?.name?.trim() || null;
+  } catch {
+    cachedRestaurantName = null;
+  }
+  return cachedRestaurantName;
+}
+
+
+export interface ReceiptAddon {
+  name: string;
+  qty: number;
+  price: number; // unit price per addon (Rupiah)
+}
 
 export interface ReceiptItem {
   name: string;
   qty: number;
-  price: number; // unit price (Rupiah)
+  price: number; // unit price of the base menu item (Rupiah), addons excluded
+  addons?: ReceiptAddon[];
+  notes?: string | null;
 }
 
 export interface ReceiptData {
@@ -87,8 +115,21 @@ export function buildReceiptBytes(r: ReceiptData): Uint8Array {
   parts.push(text("-".repeat(WIDTH) + LF));
 
   for (const it of r.items) {
+    const addons = it.addons ?? [];
+    const addonUnit = addons.reduce((s, a) => s + a.price * a.qty, 0);
+    // Line total = (base + addons) * qty, matching what the customer pays.
+    const lineTotal = (it.price + addonUnit) * it.qty;
     parts.push(text(`${it.qty}x ${it.name}`.slice(0, WIDTH) + LF));
-    parts.push(text(padLine("", `${money(it.price * it.qty)}`) + LF));
+    parts.push(text(padLine("", `${money(lineTotal)}`) + LF));
+    // Addons under the item, indented, so the kitchen sees the full spec.
+    for (const a of addons) {
+      const label = a.qty > 1 ? `  + ${a.qty}x ${a.name}` : `  + ${a.name}`;
+      parts.push(text(label.slice(0, WIDTH) + LF));
+    }
+    // Item note (e.g. "tanpa gula") — indented, so it isn't missed.
+    if (it.notes && it.notes.trim()) {
+      parts.push(text(`  * ${it.notes.trim()}`.slice(0, WIDTH) + LF));
+    }
   }
 
   parts.push(text("-".repeat(WIDTH) + LF));

@@ -7,7 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
 import { formatCurrency, ORDER_STATUS_LABELS, PAYMENT_STATUS_LABELS } from "@/lib/format";
-import { printReceipt, type ReceiptData } from "@/lib/bluetooth-print";
+import { printReceipt, getRestaurantName, type ReceiptData } from "@/lib/bluetooth-print";
+import { cn } from "@/lib/utils";
 import { AlertCircle, Clock, MapPin, User, XCircle, Printer } from "lucide-react";
 import { toast } from "sonner";
 import type { ApiResponse } from "@/types";
@@ -138,7 +139,12 @@ export function AdminOrderDetail({
 }
 
 function OrderBody({ order }: { order: OrderDetail }) {
+  const [printing, setPrinting] = useState(false);
+
   const handlePrint = async () => {
+    if (printing) return;
+    setPrinting(true);
+    const restaurantName = await getRestaurantName();
     const receipt: ReceiptData = {
       orderNumber: order.orderNumber,
       orderType: order.orderType as "DINE_IN" | "TAKE_AWAY",
@@ -149,16 +155,28 @@ function OrderBody({ order }: { order: OrderDetail }) {
         name: it.menuItem.name,
         qty: it.quantity,
         price: it.price,
+        addons: (it.addons ?? []).map((a) => ({
+          name: a.name,
+          qty: a.quantity,
+          price: a.priceSnapshot,
+        })),
+        notes: it.notes,
       })),
       subtotal: order.subtotal,
       serviceAmount: order.serviceAmount,
       taxAmount: order.taxAmount,
       grandTotal: order.grandTotal,
       paymentMethod: order.transaction?.paymentMethod ?? null,
+      restaurantName,
     };
-    const result = await printReceipt(receipt);
-    if (result === "failed") toast.error("Gagal mencetak struk");
-    else if (result === "bluetooth") toast.success("Struk dikirim ke printer Bluetooth");
+    try {
+      const result = await printReceipt(receipt);
+      if (result === "bluetooth") toast.success("Struk dikirim ke printer Bluetooth");
+      else if (result === "browser") toast.info("Printer Bluetooth tidak tersedia — memakai dialog cetak browser");
+      else toast.error("Gagal mencetak struk");
+    } finally {
+      setPrinting(false);
+    }
   };
 
   return (
@@ -176,11 +194,12 @@ function OrderBody({ order }: { order: OrderDetail }) {
         <button
           type="button"
           onClick={handlePrint}
-          className="ml-auto inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium hover:bg-muted"
+          disabled={printing}
+          className="ml-auto inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
           title="Cetak struk ke printer Bluetooth (atau dialog browser)"
         >
-          <Printer className="h-3.5 w-3.5" />
-          Cetak Struk
+          <Printer className={cn("h-3.5 w-3.5", printing && "animate-pulse")} />
+          {printing ? "Mencetak…" : "Cetak Struk"}
         </button>
       </div>
 

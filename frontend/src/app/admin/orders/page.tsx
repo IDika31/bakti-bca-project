@@ -15,6 +15,7 @@ import { CheckCircle2, Search, ChevronLeft, ChevronRight, Eye } from "lucide-rea
 import { api } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 import { formatCurrency, ORDER_STATUS_LABELS, PAYMENT_STATUS_LABELS } from "@/lib/format";
+import { useRequireRole } from "@/hooks/use-require-role";
 import { toast } from "sonner";
 import type { PaginatedResponse } from "@/types";
 
@@ -83,6 +84,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function AdminOrdersPage() {
+  const { ready, allowed } = useRequireRole("OWNER", "ADMIN", "CASHIER");
   const [orders, setOrders] = useState<OrderAdmin[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
@@ -195,6 +197,8 @@ export default function AdminOrdersPage() {
       toast.error(err instanceof Error ? err.message : "Gagal menyelesaikan");
     }
   };
+
+  if (!ready || !allowed) return null;
 
   return (
     <div className="space-y-4">
