@@ -145,6 +145,10 @@ checkoutRoute.post("/checkout", async (c) => {
         sessionId: data.sessionId,
         orderType: data.orderType,
         tableId,
+        // Skip the "Pesanan Masuk" (PLACED) waiting step — every order,
+        // dine-in or take away, goes straight to "Proses" (PREPARING) the
+        // moment it's created, regardless of payment status.
+        orderStatus: "PREPARING",
         customerName: data.customerName || null,
         customerEmail,
         subtotal: priceBreakdown.subtotal,
