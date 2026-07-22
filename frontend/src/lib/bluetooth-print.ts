@@ -55,7 +55,8 @@ export interface ReceiptData {
   restaurantName?: string | null;
 }
 
-// --- ESC/POS byte helpers (58mm = 32 chars/line) ---
+// --- ESC/POS byte helpers ---
+// Samkuan SP58D: 58mm thermal, 384-dot line, Font A = 32 chars/line.
 const WIDTH = 32;
 const ESC = 0x1b;
 const GS = 0x1d;
@@ -67,8 +68,9 @@ function cmd(...bytes: number[]): Uint8Array {
 
 function text(t: string): Uint8Array {
   // Encode latin1-ish (printer default code page WPC1252). Strip chars we
-  // can't represent to keep the receipt readable.
-  const clean = t.replace(/[^\x20-\x7e]/g, "");
+  // can't represent to keep the receipt readable, but KEEP newlines (0x0a) —
+  // they are the line breaks the printer needs to lay the receipt out.
+  const clean = t.replace(/[^\x20-\x7e\n]/g, "");
   return new TextEncoder().encode(clean);
 }
 
@@ -80,9 +82,11 @@ function concat(...parts: Uint8Array[]): Uint8Array {
   return out;
 }
 
-function center(s: string): string {
-  if (s.length >= WIDTH) return s.slice(0, WIDTH);
-  const pad = Math.floor((WIDTH - s.length) / 2);
+// Center within a given column width (default full line). Used for both normal
+// (32-col) and double-width (16-col) modes so headers never overflow the paper.
+function center(s: string, width: number = WIDTH): string {
+  if (s.length >= width) return s.slice(0, width);
+  const pad = Math.floor((width - s.length) / 2);
   return " ".repeat(pad) + s;
 }
 
@@ -95,19 +99,79 @@ function money(n: number): string {
   return "Rp" + n.toLocaleString("id-ID");
 }
 
+// Word-wrap a string to `width` columns, breaking on spaces where possible and
+// hard-splitting words longer than the line. Continuation lines get `indent`
+// leading spaces so wrapped item names stay visually grouped.
+function wrap(s: string, width: number, indent: number = 0): string[] {
+  const words = s.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let cur = "";
+  const pad = " ".repeat(indent);
+  const limit = (isFirst: boolean) => (isFirst ? width : width - indent);
+  for (const w of words) {
+    const isFirst = lines.length === 0;
+    const max = limit(isFirst);
+    // Hard-split a word that can't fit on its own line.
+    if (w.length > max) {
+      if (cur) { lines.push(isFirst ? cur : pad + cur); cur = ""; }
+      let rest = w;
+      while (rest.length > 0) {
+        const m = limit(lines.length === 0);
+        const chunk = rest.slice(0, m);
+        rest = rest.slice(m);
+        lines.push(lines.length === 0 ? chunk : pad + chunk);
+      }
+      continue;
+    }
+    const next = cur ? cur + " " + w : w;
+    if (next.length > max) {
+      lines.push(isFirst ? cur : pad + cur);
+      cur = w;
+    } else {
+      cur = next;
+    }
+  }
+  if (cur) lines.push(lines.length === 0 ? cur : pad + cur);
+  return lines.length ? lines : [""];
+}
+
+// Render one order line: "2x Nama Item ......... Rp30.000". The name wraps if
+// it's long; the price sits right-aligned on the same line as the last name
+// segment when it fits, else on its own right-aligned line.
+function itemLine(qty: number, name: string, total: string): string {
+  const prefix = `${qty}x `;
+  const nameLines = wrap(name, WIDTH, prefix.length);
+  // Attach the prefix to the first line.
+  nameLines[0] = prefix + nameLines[0];
+  const last = nameLines[nameLines.length - 1];
+  // Fit the price on the last name line if there's room (min 1 space gap).
+  if (last.length + 1 + total.length <= WIDTH) {
+    nameLines[nameLines.length - 1] = padLine(last, total);
+  } else {
+    nameLines.push(padLine("", total));
+  }
+  return nameLines.join(LF);
+}
+
 export function buildReceiptBytes(r: ReceiptData): Uint8Array {
   const parts: Uint8Array[] = [];
   // Init + enable ESC/POS
   parts.push(cmd(ESC, 0x40));
-  // Align center, double-height/width for restaurant name
-  parts.push(cmd(ESC, 0x61, 0x01));
-  parts.push(cmd(GS, 0x21, 0x11));
-  parts.push(text((r.restaurantName || "Rumah Makan").slice(0, WIDTH) + LF));
-  parts.push(cmd(GS, 0x21, 0x00));
-  parts.push(text(center("STRUK PESANAN") + LF));
-  parts.push(cmd(ESC, 0x61, 0x00));
 
-  parts.push(text(padLine(`No: #${r.orderNumber}`, "") + LF));
+  // --- Header: restaurant name, centered, double-HEIGHT only so the full
+  // 32-char line width is usable (double-width would cap it at 16 and clip
+  // longer names). Wrap so a long name spans two big lines instead of clipping.
+  parts.push(cmd(ESC, 0x61, 0x01)); // center
+  parts.push(cmd(GS, 0x21, 0x01));  // double height
+  for (const line of wrap(r.restaurantName || "Rumah Makan", WIDTH)) {
+    parts.push(text(line + LF));
+  }
+  parts.push(cmd(GS, 0x21, 0x00));  // normal size
+  parts.push(text("STRUK PESANAN" + LF));
+  parts.push(cmd(ESC, 0x61, 0x00)); // left align
+
+  parts.push(text("=".repeat(WIDTH) + LF));
+  parts.push(text(padLine("No", `#${r.orderNumber}`) + LF));
   parts.push(text(padLine("Tgl", new Date(r.createdAt).toLocaleString("id-ID")) + LF));
   parts.push(text(padLine("Tipe", r.orderType === "DINE_IN" ? "Dine In" : "Take Away") + LF));
   if (r.tableLabel) parts.push(text(padLine("Meja", r.tableLabel) + LF));
@@ -119,16 +183,15 @@ export function buildReceiptBytes(r: ReceiptData): Uint8Array {
     const addonUnit = addons.reduce((s, a) => s + a.price * a.qty, 0);
     // Line total = (base + addons) * qty, matching what the customer pays.
     const lineTotal = (it.price + addonUnit) * it.qty;
-    parts.push(text(`${it.qty}x ${it.name}`.slice(0, WIDTH) + LF));
-    parts.push(text(padLine("", `${money(lineTotal)}`) + LF));
-    // Addons under the item, indented, so the kitchen sees the full spec.
+    parts.push(text(itemLine(it.qty, it.name, money(lineTotal)) + LF));
+    // Addons under the item, indented 2 cols, so the kitchen sees the full spec.
     for (const a of addons) {
-      const label = a.qty > 1 ? `  + ${a.qty}x ${a.name}` : `  + ${a.name}`;
-      parts.push(text(label.slice(0, WIDTH) + LF));
+      const label = a.qty > 1 ? `+ ${a.qty}x ${a.name}` : `+ ${a.name}`;
+      for (const line of wrap(label, WIDTH - 2)) parts.push(text("  " + line + LF));
     }
     // Item note (e.g. "tanpa gula") — indented, so it isn't missed.
     if (it.notes && it.notes.trim()) {
-      parts.push(text(`  * ${it.notes.trim()}`.slice(0, WIDTH) + LF));
+      for (const line of wrap(`* ${it.notes.trim()}`, WIDTH - 2)) parts.push(text("  " + line + LF));
     }
   }
 
@@ -136,19 +199,20 @@ export function buildReceiptBytes(r: ReceiptData): Uint8Array {
   parts.push(text(padLine("Subtotal", money(r.subtotal)) + LF));
   if (r.serviceAmount > 0) parts.push(text(padLine("Service", money(r.serviceAmount)) + LF));
   if (r.taxAmount > 0) parts.push(text(padLine("Pajak", money(r.taxAmount)) + LF));
-  parts.push(cmd(ESC, 0x45, 0x02)); // bold on (double)
+  parts.push(text("-".repeat(WIDTH) + LF));
+  parts.push(cmd(ESC, 0x45, 0x01)); // bold on
   parts.push(text(padLine("TOTAL", money(r.grandTotal)) + LF));
   parts.push(cmd(ESC, 0x45, 0x00)); // bold off
   if (r.paymentMethod) {
     const pm = r.paymentMethod === "CASH" ? "TUNAI" : r.paymentMethod === "QRIS" ? "QRIS" : r.paymentMethod;
     parts.push(text(padLine("Bayar", pm) + LF));
   }
+  parts.push(text("=".repeat(WIDTH) + LF));
+  parts.push(cmd(ESC, 0x61, 0x01)); // center
   parts.push(text(LF));
-  parts.push(cmd(ESC, 0x61, 0x01));
-  parts.push(text(center("Terima Kasih") + LF));
-  parts.push(text(center("Semoga lekas datang lagi") + LF));
-  parts.push(cmd(ESC, 0x61, 0x00));
-  parts.push(text(LF + LF));
+  parts.push(text("Terima Kasih" + LF));
+  parts.push(text("Semoga lekas datang lagi" + LF));
+  parts.push(cmd(ESC, 0x61, 0x00)); // left align
 
   // Feed + cut
   parts.push(cmd(ESC, 0x64, 0x03));
