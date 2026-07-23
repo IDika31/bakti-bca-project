@@ -185,14 +185,14 @@ export function buildReceiptBytes(r: ReceiptData): Uint8Array {
     const lineTotal = (it.price + addonUnit) * it.qty;
     parts.push(text(itemLine(it.qty, it.name, money(lineTotal)) + LF));
     // Addons under the item, indented 2 cols, so the kitchen sees the full spec.
+    if (it.notes && it.notes.trim()) {
+      for (const line of wrap(`(${it.notes.trim()})`, WIDTH - 2)) parts.push(text("  " + line + LF));
+    }
     for (const a of addons) {
       const label = a.qty > 1 ? `+ ${a.qty}x ${a.name}` : `+ ${a.name}`;
       for (const line of wrap(label, WIDTH - 2)) parts.push(text("  " + line + LF));
     }
     // Item note (e.g. "tanpa gula") — indented, so it isn't missed.
-    if (it.notes && it.notes.trim()) {
-      for (const line of wrap(`* ${it.notes.trim()}`, WIDTH - 2)) parts.push(text("  " + line + LF));
-    }
   }
 
   parts.push(text("-".repeat(WIDTH) + LF));
