@@ -5,6 +5,13 @@
 
 import { api } from "@/lib/api";
 import type { ApiResponse, RestaurantProfile } from "@/types";
+import {
+  isCapacitor,
+  nativePairPrinter,
+  nativeReconnectPrinter,
+  nativeIsPrinterConnected,
+  nativeWriteReceipt,
+} from "@/lib/capacitor-bridge";
 
 const ESCPOS_SERVICE = "000018f0-0000-1000-8000-00805f9b34fb";
 const ESCPOS_CHAR = "00002af1-0000-1000-8000-00805f9b34fb";
@@ -172,10 +179,10 @@ export function buildReceiptBytes(r: ReceiptData): Uint8Array {
 
   parts.push(text("=".repeat(WIDTH) + LF));
   parts.push(text(padLine("No", `#${r.orderNumber}`) + LF));
-  parts.push(text(padLine("Tgl", new Date(r.createdAt).toLocaleString("id-ID")) + LF));
+  parts.push(text(padLine("Tanggal", new Date(r.createdAt).toLocaleString("id-ID")) + LF));
   parts.push(text(padLine("Tipe", r.orderType === "DINE_IN" ? "Dine In" : "Take Away") + LF));
   if (r.tableLabel) parts.push(text(padLine("Meja", r.tableLabel) + LF));
-  if (r.customerName) parts.push(text(padLine("Plgn", r.customerName) + LF));
+  if (r.customerName) parts.push(text(padLine("Pelanggan", r.customerName) + LF));
   parts.push(text("-".repeat(WIDTH) + LF));
 
   for (const it of r.items) {
@@ -184,7 +191,8 @@ export function buildReceiptBytes(r: ReceiptData): Uint8Array {
     // Line total = (base + addons) * qty, matching what the customer pays.
     const lineTotal = (it.price + addonUnit) * it.qty;
     parts.push(text(itemLine(it.qty, it.name, money(lineTotal)) + LF));
-    // Addons under the item, indented 2 cols, so the kitchen sees the full spec.
+    // Note (e.g. "tanpa gula") duluan — langsung di bawah nama menu, dibungkus
+    // "()" supaya kelihatan sebagai catatan bukan addon. Baru addons di bawahnya.
     if (it.notes && it.notes.trim()) {
       for (const line of wrap(`(${it.notes.trim()})`, WIDTH - 2)) parts.push(text("  " + line + LF));
     }
@@ -192,7 +200,6 @@ export function buildReceiptBytes(r: ReceiptData): Uint8Array {
       const label = a.qty > 1 ? `+ ${a.qty}x ${a.name}` : `+ ${a.name}`;
       for (const line of wrap(label, WIDTH - 2)) parts.push(text("  " + line + LF));
     }
-    // Item note (e.g. "tanpa gula") — indented, so it isn't missed.
   }
 
   parts.push(text("-".repeat(WIDTH) + LF));
@@ -211,7 +218,7 @@ export function buildReceiptBytes(r: ReceiptData): Uint8Array {
   parts.push(cmd(ESC, 0x61, 0x01)); // center
   parts.push(text(LF));
   parts.push(text("Terima Kasih" + LF));
-  parts.push(text("Semoga lekas datang lagi" + LF));
+  // parts.push(text("Semoga lekas datang lagi" + LF));
   parts.push(cmd(ESC, 0x61, 0x00)); // left align
 
   // Feed + cut
@@ -230,6 +237,7 @@ export function isBluetoothSupported(): boolean {
 let cachedChar: BluetoothRemoteGATTCharacteristic | null = null;
 
 export function isPrinterConnected(): boolean {
+  if (isCapacitor()) return nativeIsPrinterConnected();
   return cachedChar !== null;
 }
 
@@ -257,6 +265,7 @@ async function connectPrinter(): Promise<BluetoothRemoteGATTCharacteristic | nul
 // Uses navigator.bluetooth.getDevices() (Chrome 100+). Returns true if a
 // printer is now connected and cached.
 export async function reconnectPrinter(): Promise<boolean> {
+  if (isCapacitor()) return nativeReconnectPrinter();
   if (!isBluetoothSupported()) return false;
   if (cachedChar) return true;
   try {
@@ -281,6 +290,7 @@ export async function reconnectPrinter(): Promise<boolean> {
 
 /** Pair a printer (user gesture required — bind to a button click). */
 export async function pairPrinter(): Promise<boolean> {
+  if (isCapacitor()) return nativePairPrinter();
   try {
     const char = await connectPrinter();
     return char !== null;
@@ -318,6 +328,21 @@ export type PrintResult = "bluetooth" | "browser" | "failed";
  * is unsupported or pairing fails, falls back to the browser print dialog.
  */
 export async function printReceipt(r: ReceiptData): Promise<PrintResult> {
+  // Capacitor native BLE path — works in background.
+  if (isCapacitor()) {
+    if (!nativeIsPrinterConnected()) await nativeReconnectPrinter();
+    if (nativeIsPrinterConnected()) {
+      const ok = await nativeWriteReceipt(buildReceiptBytes(r));
+      if (ok) return "bluetooth";
+    }
+    if (await nativePairPrinter()) {
+      const ok = await nativeWriteReceipt(buildReceiptBytes(r));
+      if (ok) return "bluetooth";
+    }
+    return "failed";
+  }
+
+  // Web Bluetooth path.
   if (isBluetoothSupported()) {
     // Use the cached printer if available, otherwise try to reconnect silently.
     if (!cachedChar) await reconnectPrinter();
@@ -347,6 +372,14 @@ export async function printReceipt(r: ReceiptData): Promise<PrintResult> {
  * dialog — auto-print must be silent. Returns true if printed.
  */
 export async function printReceiptAuto(r: ReceiptData): Promise<boolean> {
+  // Capacitor native BLE — works even in background.
+  if (isCapacitor()) {
+    if (!nativeIsPrinterConnected()) await nativeReconnectPrinter();
+    if (!nativeIsPrinterConnected()) return false;
+    return nativeWriteReceipt(buildReceiptBytes(r));
+  }
+
+  // Web Bluetooth path — only works in foreground.
   if (!isBluetoothSupported()) return false;
   if (!cachedChar) await reconnectPrinter();
   if (!cachedChar) return false;

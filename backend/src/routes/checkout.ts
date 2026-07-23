@@ -41,18 +41,18 @@ checkoutRoute.post("/checkout", async (c) => {
     return error(c, "Restoran tutup hari ini.", 400);
   }
 
-  // Validate table if dine-in
+  // Validate table if dine-in with QR (token supplied). Walk-in dine-in
+  // (customer sits down without scanning QR) is allowed — cashier assigns the
+  // table manually — but customerName is required so cashier can call them.
   let tableId: string | null = null;
-  if (data.orderType === "DINE_IN") {
-    if (!data.tableToken) return error(c, "Token meja diperlukan untuk dine-in", 400);
-
+  if (data.orderType === "DINE_IN" && data.tableToken) {
     const table = await prisma.table.findUnique({
       where: { token: data.tableToken, isActive: true },
     });
     if (!table) return error(c, "Meja tidak valid", 400);
     tableId = table.id;
   } else {
-    if (!data.customerName) return error(c, "Nama pemesan diperlukan untuk take-away", 400);
+    if (!data.customerName) return error(c, "Nama pemesan diperlukan", 400);
   }
 
   // Verify menu items exist and are available

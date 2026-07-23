@@ -5,6 +5,8 @@ import { useSearchParams } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
 import type { TableInfo, ApiResponse } from "@/types";
 
+export type OrderType = "DINE_IN" | "TAKE_AWAY";
+
 interface TableContextType {
   table: TableInfo | null;
   loading: boolean;
@@ -13,6 +15,10 @@ interface TableContextType {
   // the menu read-only but cannot order.
   locked: boolean;
   lockMessage: string | null;
+  // Explicit choice for walk-in customers (no table QR). null = belum dipilih,
+  // gate akan tampilkan chooser. Kalau ada meja, otomatis DINE_IN.
+  orderType: OrderType | null;
+  setOrderType: (t: OrderType) => void;
 }
 
 const TableContext = createContext<TableContextType>({
@@ -21,7 +27,11 @@ const TableContext = createContext<TableContextType>({
   isDineIn: false,
   locked: false,
   lockMessage: null,
+  orderType: null,
+  setOrderType: () => {},
 });
+
+const ORDER_TYPE_KEY = "order-type";
 
 // Per-device identity used for the table lock. Created once and reused for the
 // eventual checkout, so the device that claimed the lock is the one that orders.
@@ -41,6 +51,20 @@ export function TableProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(!!token);
   const [locked, setLocked] = useState(false);
   const [lockMessage, setLockMessage] = useState<string | null>(null);
+  const [orderType, setOrderTypeState] = useState<OrderType | null>(null);
+
+  // Hydrate stored choice once on mount (walk-in customers).
+  useEffect(() => {
+    const stored = sessionStorage.getItem(ORDER_TYPE_KEY);
+    if (stored === "DINE_IN" || stored === "TAKE_AWAY") {
+      setOrderTypeState(stored);
+    }
+  }, []);
+
+  const setOrderType = (t: OrderType) => {
+    sessionStorage.setItem(ORDER_TYPE_KEY, t);
+    setOrderTypeState(t);
+  };
 
   useEffect(() => {
     if (!token) {
@@ -84,8 +108,24 @@ export function TableProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, [token]);
 
+  // Efektif: kalau ada meja QR, default ke DINE_IN tapi customer bisa
+  // switch ke TAKE_AWAY (pesan bungkus dari meja). Tanpa meja, pakai pilihan explicit.
+  const effectiveOrderType: OrderType | null = table
+    ? (orderType ?? "DINE_IN")
+    : orderType;
+
   return (
-    <TableContext.Provider value={{ table, loading, isDineIn: !!table, locked, lockMessage }}>
+    <TableContext.Provider
+      value={{
+        table,
+        loading,
+        isDineIn: effectiveOrderType === "DINE_IN",
+        locked,
+        lockMessage,
+        orderType: effectiveOrderType,
+        setOrderType,
+      }}
+    >
       {children}
     </TableContext.Provider>
   );

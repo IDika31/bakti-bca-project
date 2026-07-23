@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { MapPin, UtensilsCrossed } from "lucide-react";
+import { MapPin, UtensilsCrossed, ShoppingBag } from "lucide-react";
 import { api } from "@/lib/api";
 import { useCart } from "@/hooks/use-cart";
 import { useTable } from "@/hooks/use-table";
@@ -20,7 +20,7 @@ import type { MenuItem, Category, RestaurantProfile, CartItemAddon, ApiResponse 
 export default function MenuPage() {
   const router = useRouter();
   const { addItem } = useCart();
-  const { table, isDineIn } = useTable();
+  const { table, isDineIn, orderType, setOrderType } = useTable();
   const opStatus = useOperatingStatus();
 
   const [profile, setProfile] = useState<RestaurantProfile | null>(null);
@@ -142,22 +142,36 @@ export default function MenuPage() {
         </div>
       )}
 
-      {/* Table indicator */}
-      {isDineIn && table && (
+      {/* Order type indicator (QR table & walk-in) */}
+      {orderType && (
         <div className="mx-auto mt-4 max-w-6xl px-4 sm:px-6 md:px-8">
           <div className="flex items-center gap-3 rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent px-4 py-3 shadow-sm sm:px-5">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/15">
-              <MapPin className="h-5 w-5 text-primary" />
+              {table ? (
+                <MapPin className="h-5 w-5 text-primary" />
+              ) : orderType === "DINE_IN" ? (
+                <UtensilsCrossed className="h-5 w-5 text-primary" />
+              ) : (
+                <ShoppingBag className="h-5 w-5 text-primary" />
+              )}
             </div>
             <div className="flex-1">
-              <p className="text-xs text-muted-foreground">Kamu sedang di</p>
+              {table && (
+                <p className="text-xs text-muted-foreground">
+                  {table.name || `Meja ${table.number}`}
+                </p>
+              )}
               <p className="font-semibold text-primary">
-                {table.name || `Meja ${table.number}`}
+                {orderType === "DINE_IN" ? "Makan di Tempat" : "Bungkus"}
               </p>
             </div>
-            <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
-              Dine In
-            </span>
+            <button
+              type="button"
+              onClick={() => setOrderType(orderType === "DINE_IN" ? "TAKE_AWAY" : "DINE_IN")}
+              className="rounded-full border border-primary/20 bg-white/60 px-3 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/10 active:scale-95"
+            >
+              Ganti
+            </button>
           </div>
         </div>
       )}

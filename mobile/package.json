@@ -1,0 +1,24 @@
+{
+  "name": "admin-kasir-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Capacitor shell wrapping the admin panel for Android — foreground service + native BLE",
+  "scripts": {
+    "cap:sync": "npx cap sync android",
+    "cap:open": "npx cap open android",
+    "cap:build": "npx cap sync android && cd android && ./gradlew assembleDebug",
+    "cap:run": "npx cap run android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7",
+    "@capacitor/app": "^7",
+    "@capacitor/core": "^7",
+    "@capacitor/haptics": "^7",
+    "@capacitor/status-bar": "^7",
+    "@capacitor-community/bluetooth-le": "^7",
+    "@anuradev/capacitor-foreground-service": "^0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7"
+  }
+}

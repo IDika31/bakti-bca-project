@@ -18,7 +18,7 @@ import type { PaymentMethod, TaxConfig, ApiResponse } from "@/types";
 export default function CheckoutPage() {
   const router = useRouter();
   const { items, clearCart, calculateTotal } = useCart();
-  const { table, isDineIn } = useTable();
+  const { table, orderType } = useTable();
   const opStatus = useOperatingStatus();
 
   const [customerName, setCustomerName] = useState("");
@@ -66,7 +66,10 @@ export default function CheckoutPage() {
       toast.error("Restoran sedang tutup. Pemesanan tidak bisa diproses.");
       return;
     }
-    if (!isDineIn && !customerName.trim()) {
+    // Nama wajib kecuali dine-in via QR meja (meja sudah identifikasi).
+    // Kalau di meja tapi pesan bungkus → perlu nama.
+    const needsName = !table || orderType === "TAKE_AWAY";
+    if (needsName && !customerName.trim()) {
       toast.error("Masukkan nama pemesan");
       return;
     }
@@ -84,15 +87,22 @@ export default function CheckoutPage() {
       }
 
       const tableInfo = sessionStorage.getItem("table-info");
-      const tableToken = tableInfo ? JSON.parse(tableInfo).token : undefined;
+      const resolvedOrderType = orderType ?? (table ? "DINE_IN" : "TAKE_AWAY");
+      // Kalau pesan bungkus (TAKE_AWAY) jangan kaitkan ke meja — ini pesanan terpisah.
+      const tableToken =
+        resolvedOrderType === "DINE_IN" && tableInfo
+          ? JSON.parse(tableInfo).token
+          : undefined;
+      // Nama wajib kalau tidak pakai tableToken (kasir butuh identifikasi).
+      const sendName = tableToken ? undefined : customerName;
 
       const res = await api.post<ApiResponse<{ orderId: string; transaction: { checkoutUrl?: string; reference: string } }>>(
         "/api/checkout",
         {
           sessionId,
-          orderType: isDineIn ? "DINE_IN" : "TAKE_AWAY",
+          orderType: resolvedOrderType,
           tableToken,
-          customerName: isDineIn ? undefined : customerName,
+          customerName: sendName,
           customerEmail: customerEmail || undefined,
           paymentMethodCode: selectedMethod,
           items: items.map((item) => ({
@@ -145,11 +155,16 @@ export default function CheckoutPage() {
               <div className="border-b border-border/60 bg-muted/30 px-4 py-2.5 sm:px-5">
                 <h2 className="flex items-center gap-2 text-sm font-semibold">
                   <User className="h-4 w-4 text-primary" />
-                  {isDineIn ? "Informasi Meja" : "Informasi Pemesan"}
+                  Informasi Pemesan
+                  {orderType && (
+                    <span className="ml-auto rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary">
+                      {orderType === "DINE_IN" ? "Makan di Tempat" : "Bungkus"}
+                    </span>
+                  )}
                 </h2>
               </div>
               <div className="p-4 sm:p-5">
-                {isDineIn && table ? (
+                {table && orderType === "DINE_IN" ? (
                   <div className="flex items-center gap-3">
                     <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10">
                       <MapPin className="h-6 w-6 text-primary" />
@@ -170,7 +185,7 @@ export default function CheckoutPage() {
                       id="name"
                       value={customerName}
                       onChange={(e) => setCustomerName(e.target.value)}
-                      placeholder="Nama untuk dipanggil"
+                      placeholder={orderType === "DINE_IN" ? "Nama untuk dipanggil ke meja" : "Nama untuk dipanggil saat pesanan siap"}
                       className={`mt-2 rounded-xl ${attempted && !customerName.trim() ? "border-red-500 ring-1 ring-red-500/20" : ""}`}
                     />
                     {attempted && !customerName.trim() && (

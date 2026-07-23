@@ -87,29 +87,34 @@ publicRoutes.get("/tables/validate", async (c) => {
     return success(c, { id: table.id, number: table.number, name: table.name });
   }
 
-  const allowed = await canClaimLock(table, sessionId);
-  if (!allowed) {
-    return error(
-      c,
-      "Meja ini sedang dipakai perangkat lain. Silakan pesan dari perangkat tersebut atau minta kasir membebaskan meja.",
-      423
-    );
-  }
-
-  // Claim (or refresh) the lock for this device. Guarded updateMany so two
-  // devices racing can't both win — the row must still match the exact holder
-  // state we just read (free, us, or the stale holder we're allowed to evict).
-  const claimWhere: Record<string, unknown> = { id: table.id };
-  if (table.lockedSessionId) {
-    // Takeover of a stale/orderless holder (canClaimLock already approved it).
-    claimWhere.lockedSessionId = table.lockedSessionId;
-  } else {
-    claimWhere.lockedSessionId = null;
-  }
-  await prisma.table.updateMany({
-    where: claimWhere,
-    data: { lockedSessionId: sessionId, lockedAt: new Date() },
+  // Check if table lock feature is enabled.
+  const profile = await prisma.restaurantProfile.findFirst({
+    select: { tableLockEnabled: true },
   });
+  const lockEnabled = profile?.tableLockEnabled ?? false;
+
+  if (lockEnabled) {
+    const allowed = await canClaimLock(table, sessionId);
+    if (!allowed) {
+      return error(
+        c,
+        "Meja ini sedang dipakai perangkat lain. Silakan pesan dari perangkat tersebut atau minta kasir membebaskan meja.",
+        423
+      );
+    }
+
+    // Claim (or refresh) the lock for this device.
+    const claimWhere: Record<string, unknown> = { id: table.id };
+    if (table.lockedSessionId) {
+      claimWhere.lockedSessionId = table.lockedSessionId;
+    } else {
+      claimWhere.lockedSessionId = null;
+    }
+    await prisma.table.updateMany({
+      where: claimWhere,
+      data: { lockedSessionId: sessionId, lockedAt: new Date() },
+    });
+  }
 
   return success(c, { id: table.id, number: table.number, name: table.name });
 });
