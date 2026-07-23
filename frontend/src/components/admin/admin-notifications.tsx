@@ -228,7 +228,16 @@ export function AdminNotificationsProvider({ children }: { children: React.React
           }
         : undefined,
     });
-    if (browserRef.current && typeof Notification !== "undefined" && Notification.permission === "granted") {
+    // Use Service Worker notification when page is hidden (background) for
+    // persistent system-level notification that survives app switching.
+    const isHidden = typeof document !== "undefined" && document.visibilityState === "hidden";
+    if (isHidden && "serviceWorker" in navigator && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({
+        type: "NEW_ORDER",
+        orderNumber,
+        orderId,
+      });
+    } else if (browserRef.current && typeof Notification !== "undefined" && Notification.permission === "granted") {
       const n = new Notification("Pesanan baru masuk", {
         body: `#${orderNumber}`,
         tag: `order-${orderId ?? orderNumber}`,

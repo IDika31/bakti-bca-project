@@ -150,6 +150,7 @@ interface Profile {
   address: string | null;
   phone: string | null;
   email: string | null;
+  tableLockEnabled: boolean;
 }
 
 interface TaxConfig {
@@ -357,6 +358,18 @@ function SettingsContent() {
                       value={profile.bannerUrl || ""}
                       onChange={(v) => setProfile({ ...profile, bannerUrl: v || null })}
                       token={token}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between rounded-lg border p-3">
+                    <div>
+                      <p className="font-medium">Table Lock</p>
+                      <p className="text-sm text-muted-foreground">
+                        Kunci meja per perangkat saat scan QR (cegah double order)
+                      </p>
+                    </div>
+                    <Switch
+                      checked={profile.tableLockEnabled}
+                      onCheckedChange={(v) => setProfile({ ...profile, tableLockEnabled: v })}
                     />
                   </div>
                   <Button onClick={saveProfile}>Simpan Profil</Button>

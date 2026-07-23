@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { resolveImageUrl } from "@/lib/api";
 import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
@@ -249,7 +250,14 @@ function ItemsSection({ items }: { items: OrderItemDetail[] }) {
           <div key={item.id} className="flex gap-3 rounded-lg border p-2">
             <div className="relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-md bg-muted">
               {item.menuItem.imageUrl ? (
-                <Image src={item.menuItem.imageUrl} alt={item.menuItem.name} fill className="object-cover" />
+                <Image
+                  src={resolveImageUrl(item.menuItem.imageUrl)}
+                  alt={item.menuItem.name}
+                  fill
+                  sizes="56px"
+                  className="object-cover"
+                  unoptimized
+                />
               ) : (
                 <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
                   N/A

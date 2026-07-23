@@ -10,16 +10,17 @@ datasource db {
 // ─── Restaurant Profile ─────────────────────────────────────────────
 
 model RestaurantProfile {
-  id          String   @id @default(uuid())
-  name        String
-  description String?
-  address     String?
-  phone       String?
-  email       String?
-  logoUrl     String?  @map("logo_url")
-  bannerUrl   String?  @map("banner_url")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id               String   @id @default(uuid())
+  name             String
+  description      String?
+  address          String?
+  phone            String?
+  email            String?
+  logoUrl          String?  @map("logo_url")
+  bannerUrl        String?  @map("banner_url")
+  tableLockEnabled Boolean  @default(false) @map("table_lock_enabled")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
 
   @@map("restaurant_profiles")
 }

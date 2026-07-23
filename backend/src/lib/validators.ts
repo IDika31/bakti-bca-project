@@ -80,6 +80,7 @@ export const settingsSchema = z.object({
   email: z.union([z.string().email(), z.literal(""), z.null()]).optional(),
   logoUrl: imageUrlSchema,
   bannerUrl: imageUrlSchema,
+  tableLockEnabled: z.boolean().optional(),
 });
 
 export const taxConfigSchema = z.object({

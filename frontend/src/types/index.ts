@@ -137,6 +137,7 @@ export interface RestaurantProfile {
   phone: string | null;
   logoUrl: string | null;
   bannerUrl: string | null;
+  tableLockEnabled: boolean;
 }
 
 export interface ApiResponse<T> {

@@ -13,6 +13,7 @@ import { AdminNotifications, AdminNotificationsProvider, useAdminNotifications }
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
 import { getAdminToken, setAdminSession, clearAdminSession } from "@/lib/auth";
+import { isCapacitor, startForegroundService } from "@/lib/capacitor-bridge";
 import type { AdminRole, AdminUser, ApiResponse } from "@/types";
 
 const ALL: AdminRole[] = ["OWNER", "ADMIN", "CASHIER"];
@@ -35,9 +36,36 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   if (pathname === "/admin/login") return <>{children}</>;
   return (
     <AdminNotificationsProvider>
+      <PwaHead />
       <AdminShell>{children}</AdminShell>
     </AdminNotificationsProvider>
   );
+}
+
+function PwaHead() {
+  useEffect(() => {
+    const link = document.querySelector('link[rel="manifest"]');
+    if (!link) {
+      const el = document.createElement("link");
+      el.rel = "manifest";
+      el.href = "/manifest.json";
+      document.head.appendChild(el);
+    }
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (!meta) {
+      const el = document.createElement("meta");
+      el.name = "theme-color";
+      el.content = "#09090b";
+      document.head.appendChild(el);
+    }
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/admin-sw.js").catch(() => {});
+    }
+    if (isCapacitor()) {
+      void startForegroundService();
+    }
+  }, []);
+  return null;
 }
 
 function AdminShell({ children }: { children: React.ReactNode }) {

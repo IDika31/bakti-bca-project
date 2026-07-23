@@ -4,7 +4,7 @@ import { prisma } from "./prisma.js";
 // abandoned the table) is auto-reclaimable after this window. Normal release
 // happens when the order reaches a terminal state; this is only a fallback so
 // a table can never be wedged forever.
-export const LOCK_STALE_MS = 2 * 60 * 60 * 1000; // 2 hours
+export const LOCK_STALE_MS = 5 * 60 * 1000; // 5 minutes
 
 // Statuses that still hold the table. Anything else is terminal → lock frees.
 const ACTIVE_ORDER_STATUSES = ["PLACED", "PREPARING", "READY", "PICKED_UP"] as const;
