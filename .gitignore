@@ -46,3 +46,4 @@ supabase/.temp/
 # Local image dumps (root-level, not app assets)
 banner.png
 bunga bakung.jpg
+.env*
