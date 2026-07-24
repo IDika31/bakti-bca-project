@@ -126,6 +126,23 @@ let bleInitialized = false;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectAttempt = 0;
 let autoReconnectEnabled = false;
+// Prevents overlapping connect attempts (e.g. double-tapping "Pair" or a
+// manual pair racing the auto-reconnect loop) from registering multiple GATT
+// clients for the same device, which leaks native BLE contexts and causes
+// "Context not found" errors + later "deviceId required" failures.
+let connectInFlight = false;
+
+// Best-effort cleanup of a GATT client that failed mid-connect. Without this,
+// a half-registered client lingers in the native Bluetooth stack and corrupts
+// state for the next attempt. Always safe to call even if never connected.
+async function safeDisconnect(ble: any, deviceId: string | null | undefined) {
+  if (!ble || !deviceId) return;
+  try {
+    await ble.disconnect(deviceId);
+  } catch {
+    // ignore — device was likely never fully connected
+  }
+}
 
 // ─── Connection listeners ───────────────────────────────────────────
 
@@ -245,32 +262,57 @@ export function stopPrinterAutoReconnect() {
 // ─── Public API ─────────────────────────────────────────────────────
 
 export async function nativePairPrinter(): Promise<boolean> {
+  // Refuse to start a second pairing attempt while one is already running —
+  // this is what leaks GATT clients if the user taps "Pair" more than once
+  // or the auto-reconnect loop fires mid-pair.
+  if (connectInFlight) {
+    console.warn("[Capacitor BLE] Pair already in progress, ignoring");
+    return false;
+  }
   const ble = await initBle();
   if (!ble) return false;
+
+  connectInFlight = true;
+  let deviceId: string | undefined;
   try {
     const device = await ble.requestDevice({
       services: [ESCPOS_SERVICE],
     });
-    if (!device?.deviceId) return false;
-    await ble.connect(device.deviceId, onDisconnect);
-    await ble.discoverServices(device.deviceId);
-    nativeDeviceId = device.deviceId;
-    saveDeviceId(device.deviceId);
+    console.log("[Capacitor BLE] requestDevice resolved:", device);
+    deviceId = device?.deviceId;
+    if (!deviceId) {
+      console.warn("[Capacitor BLE] requestDevice returned no deviceId:", device);
+      return false;
+    }
+    await ble.connect(deviceId, onDisconnect);
+    await ble.discoverServices(deviceId);
+    nativeDeviceId = deviceId;
+    saveDeviceId(deviceId);
     saveDeviceName(device.name || null);
     reconnectAttempt = 0;
     notifyConnectionChange(true);
     return true;
   } catch (e) {
     console.warn("[Capacitor BLE] Pair failed:", e);
+    // Clean up a half-registered GATT client so it doesn't linger and break
+    // the next attempt.
+    await safeDisconnect(ble, deviceId);
     return false;
+  } finally {
+    connectInFlight = false;
   }
 }
 
 export async function nativeReconnectPrinter(): Promise<boolean> {
   const targetId = nativeDeviceId || loadDeviceId();
   if (!targetId) return false;
+  // Don't race a manual pairPrinter() call or another reconnect already
+  // in flight — same leak risk as nativePairPrinter.
+  if (connectInFlight) return false;
   const ble = await initBle();
   if (!ble) return false;
+
+  connectInFlight = true;
   try {
     await ble.connect(targetId, onDisconnect);
     await ble.discoverServices(targetId);
@@ -279,9 +321,13 @@ export async function nativeReconnectPrinter(): Promise<boolean> {
     reconnectAttempt = 0;
     notifyConnectionChange(true);
     return true;
-  } catch {
+  } catch (e) {
+    console.warn("[Capacitor BLE] Reconnect failed:", e);
+    await safeDisconnect(ble, targetId);
     if (autoReconnectEnabled) scheduleReconnect();
     return false;
+  } finally {
+    connectInFlight = false;
   }
 }
 

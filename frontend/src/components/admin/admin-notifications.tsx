@@ -142,6 +142,7 @@ interface NotifCtxValue {
   voiceEnabled: boolean;
   browserEnabled: boolean;
   printerConnected: boolean;
+  pairingInProgress: boolean;
   toggleSound: () => void;
   toggleVoice: () => void;
   toggleBrowser: () => Promise<void>;
@@ -154,6 +155,7 @@ const NotifCtx = createContext<NotifCtxValue>({
   voiceEnabled: true,
   browserEnabled: false,
   printerConnected: false,
+  pairingInProgress: false,
   toggleSound: () => {},
   toggleVoice: () => {},
   toggleBrowser: async () => {},
@@ -172,6 +174,7 @@ export function AdminNotificationsProvider({ children }: { children: React.React
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [browserEnabled, setBrowserEnabled] = useState(false);
   const [printerConnected, setPrinterConnected] = useState(false);
+  const [pairingInProgress, setPairingInProgress] = useState(false);
   const soundRef = useRef(true);
   const voiceRef = useRef(true);
   const browserRef = useRef(false);
@@ -508,11 +511,19 @@ export function AdminNotificationsProvider({ children }: { children: React.React
   };
 
   const handlePairPrinter = async () => {
-    const ok = await pairPrinter();
-    setPrinterConnected(ok);
-    toast[ok ? "success" : "error"](
-      ok ? "Printer Bluetooth terhubung — struk akan cetak otomatis saat pesanan baru" : "Gagal menyambung printer"
-    );
+    // Ignore taps while a pairing request is already in flight — tapping
+    // again here is what leaks GATT clients on the native side.
+    if (pairingInProgress) return;
+    setPairingInProgress(true);
+    try {
+      const ok = await pairPrinter();
+      setPrinterConnected(ok);
+      toast[ok ? "success" : "error"](
+        ok ? "Printer Bluetooth terhubung — struk akan cetak otomatis saat pesanan baru" : "Gagal menyambung printer"
+      );
+    } finally {
+      setPairingInProgress(false);
+    }
   };
 
   return (
@@ -523,6 +534,7 @@ export function AdminNotificationsProvider({ children }: { children: React.React
         voiceEnabled,
         browserEnabled,
         printerConnected,
+        pairingInProgress,
         toggleSound,
         toggleVoice,
         toggleBrowser,
@@ -540,6 +552,7 @@ export function AdminNotifications() {
     voiceEnabled,
     browserEnabled,
     printerConnected,
+    pairingInProgress,
     toggleSound,
     toggleVoice,
     toggleBrowser,
@@ -551,10 +564,17 @@ export function AdminNotifications() {
         variant="ghost"
         size="icon"
         onClick={pairPrinter}
-        title={printerConnected ? "Printer Bluetooth terhubung" : "Sambungkan printer Bluetooth"}
+        disabled={pairingInProgress}
+        title={
+          pairingInProgress
+            ? "Menyambungkan..."
+            : printerConnected
+              ? "Printer Bluetooth terhubung"
+              : "Sambungkan printer Bluetooth"
+        }
         className={printerConnected ? "text-emerald-600" : ""}
       >
-        <Printer className="h-4 w-4" />
+        <Printer className={`h-4 w-4 ${pairingInProgress ? "animate-pulse" : ""}`} />
       </Button>
       <Button
         variant="ghost"
