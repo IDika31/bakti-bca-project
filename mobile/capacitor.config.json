@@ -1,0 +1,11 @@
+{
+  "appId": "com.kasir.admin",
+  "appName": "Admin Kasir",
+  "server": {
+    "url": "https://bakti-bca-project.vercel.app/admin",
+    "cleartext": true
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}

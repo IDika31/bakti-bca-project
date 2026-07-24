@@ -13,6 +13,15 @@ import {
   getRestaurantName,
   type ReceiptData,
 } from "@/lib/bluetooth-print";
+import {
+  isCapacitor,
+  startPrinterAutoReconnect,
+  stopPrinterAutoReconnect,
+  onPrinterConnectionChange,
+  showNativeNotification,
+  createNotificationChannel,
+  nativeHasSavedPrinter,
+} from "@/lib/capacitor-bridge";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import type { ApiResponse } from "@/types";
@@ -185,12 +194,31 @@ export function AdminNotificationsProvider({ children }: { children: React.React
     browserRef.current = b;
     // Silently reconnect to a previously-paired Bluetooth printer (no prompt).
     reconnectPrinter().then(setPrinterConnected);
+
+    // Capacitor: start persistent auto-reconnect loop + listen for changes.
+    if (isCapacitor()) {
+      void createNotificationChannel();
+      startPrinterAutoReconnect();
+    }
   }, []);
 
   useEffect(() => { soundRef.current = soundEnabled; }, [soundEnabled]);
   useEffect(() => { voiceRef.current = voiceEnabled; }, [voiceEnabled]);
   useEffect(() => { browserRef.current = browserEnabled; }, [browserEnabled]);
   useEffect(() => { pathnameRef.current = pathname; }, [pathname]);
+
+  // Capacitor: listen for BLE connection changes from auto-reconnect loop.
+  useEffect(() => {
+    if (!isCapacitor()) return;
+    const unsubscribe = onPrinterConnectionChange((connected) => {
+      setPrinterConnected(connected);
+      if (connected) toast.success("Printer Bluetooth terhubung kembali");
+    });
+    return () => {
+      unsubscribe();
+      stopPrinterAutoReconnect();
+    };
+  }, []);
 
   useEffect(() => {
     if (pathname === "/admin/orders") setUnreadCount(0);
@@ -219,6 +247,12 @@ export function AdminNotificationsProvider({ children }: { children: React.React
       setUnreadCount((c) => c + 1);
     }
     if (soundRef.current) playNotificationSound();
+
+    // Capacitor: native notification guarantees sound+vibration even in background
+    // (AudioContext and SpeechSynthesis get suspended by Android when WebView is hidden).
+    if (isCapacitor()) {
+      void showNativeNotification("Pesanan Baru", `#${orderNumber} — pesanan baru masuk!`);
+    }
     flashTabTitle(`🔔 PESANAN BARU #${orderNumber}`);
     toast.info(`Pesanan baru: #${orderNumber}`, {
       action: orderId
