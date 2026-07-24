@@ -10,13 +10,14 @@
     "cap:run": "npx cap run android"
   },
   "dependencies": {
+    "@capacitor-community/bluetooth-le": "^7",
     "@capacitor/android": "^7",
     "@capacitor/app": "^7",
     "@capacitor/core": "^7",
     "@capacitor/haptics": "^7",
+    "@capacitor/local-notifications": "^7",
     "@capacitor/status-bar": "^7",
-    "@capacitor-community/bluetooth-le": "^7",
-    "@anuradev/capacitor-foreground-service": "^0"
+    "@capawesome-team/capacitor-android-foreground-service": "^7"
   },
   "devDependencies": {
     "@capacitor/cli": "^7"

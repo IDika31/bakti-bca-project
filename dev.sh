@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 # Run backend (Hono/Bun) + frontend (Next.js) concurrently.
-# Usage: ./dev.sh
+# Usage:
+#   ./dev.sh            — backend + frontend only
+#   ./dev.sh --mobile   — backend + frontend + ADB reverse + Capacitor run on device
 
 set -e
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MOBILE=false
+[[ "${1:-}" == "--mobile" || "${1:-}" == "-m" ]] && MOBILE=true
 
 cleanup() {
   echo ""
@@ -25,6 +29,25 @@ echo "[dev] Starting frontend (next) ..."
 FRONTEND_PID=$!
 
 echo "[dev] backend PID=$BACKEND_PID  frontend PID=$FRONTEND_PID"
-echo "[dev] Ctrl+C to stop both."
+
+if $MOBILE; then
+  echo ""
+  echo "[dev] Mobile mode — setting up ADB + Capacitor..."
+  echo "[dev] Waiting 5s for servers to start..."
+  sleep 5
+
+  echo "[dev] Setting up ADB reverse port forwarding..."
+  adb reverse tcp:3000 tcp:3000
+  adb reverse tcp:3001 tcp:3001
+  echo "[dev] Ports 3000 + 3001 forwarded to device."
+
+  echo "[dev] Syncing and running Capacitor on device..."
+  (cd "$ROOT/mobile" && npm install && npx cap sync android && npx cap run android) &
+  echo ""
+  echo "[dev] App deploying to device. Ctrl+C to stop all."
+else
+  echo "[dev] Ctrl+C to stop both."
+  echo "[dev] Tip: use ./dev.sh --mobile to also deploy to Android device via ADB."
+fi
 
 wait
